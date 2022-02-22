@@ -100,6 +100,9 @@ module w90_types
   ! The maximum number of shells we need to satisfy B1 condition in kmesh
   integer, parameter :: max_shells = 6
   integer, parameter :: num_nnmax = 12
+  ! The higher-order analogy of B1 condition
+  integer, parameter :: max_shells_2 = 21
+  integer, parameter :: num_nnmax_2 = 42
 
   type kmesh_input_type
     !!==================================================
@@ -107,6 +110,8 @@ module w90_types
     !!==================================================
     integer :: num_shells
     !! no longer an input keyword
+    integer :: finite_diff_order
+    !! Higher-order of finite-difference formulas
     logical :: skip_B1_tests
     !! do not check the B1 condition
     integer, allocatable :: shell_list(:)

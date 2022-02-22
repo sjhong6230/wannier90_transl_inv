@@ -570,6 +570,10 @@ contains
     call w90_readwrite_get_keyword(stdout, seedname, 'search_shells', found, i_value=kmesh_input%search_shells)
     if (kmesh_input%search_shells < 0) call io_error('Error: search_shells must be positive', stdout, seedname)
 
+    kmesh_input%finite_diff_order = 2
+    call w90_readwrite_get_keyword(stdout, seedname, 'finite_diff_order', found, i_value=kmesh_input%finite_diff_order)
+    if (kmesh_input%finite_diff_order < 0) call io_error('Error: finite_diff_order must be positive', stdout, seedname)
+
     kmesh_input%tol = 0.000001_dp
     call w90_readwrite_get_keyword(stdout, seedname, 'kmesh_tol', found, r_value=kmesh_input%tol)
     if (kmesh_input%tol < 0.0_dp) call io_error('Error: kmesh_tol must be positive', stdout, seedname)
