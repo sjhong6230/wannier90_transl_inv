@@ -565,14 +565,18 @@ contains
     character(len=50), intent(in)  :: seedname
     integer :: itmp, ierr
     logical :: found
+    integer :: n
 
     kmesh_input%search_shells = 36
     call w90_readwrite_get_keyword(stdout, seedname, 'search_shells', found, i_value=kmesh_input%search_shells)
     if (kmesh_input%search_shells < 0) call io_error('Error: search_shells must be positive', stdout, seedname)
 
-    kmesh_input%finite_diff_order = 2
+    kmesh_input%finite_diff_order = 1
     call w90_readwrite_get_keyword(stdout, seedname, 'finite_diff_order', found, i_value=kmesh_input%finite_diff_order)
     if (kmesh_input%finite_diff_order < 0) call io_error('Error: finite_diff_order must be positive', stdout, seedname)
+    n = kmesh_input%finite_diff_order
+    kmesh_input%max_shells_h = n*(4*n**2 + 15*n + 17)/6
+    kmesh_input%num_nnmax_h = 2*kmesh_input%max_shells_h
 
     kmesh_input%tol = 0.000001_dp
     call w90_readwrite_get_keyword(stdout, seedname, 'kmesh_tol', found, r_value=kmesh_input%tol)
@@ -581,7 +585,7 @@ contains
     kmesh_input%num_shells = 0
     call w90_readwrite_get_range_vector(stdout, seedname, 'shell_list', found, kmesh_input%num_shells, lcount=.true.)
     if (found) then
-      if (kmesh_input%num_shells < 0 .or. kmesh_input%num_shells > max_shells) &
+      if (kmesh_input%num_shells < 0 .or. kmesh_input%num_shells > kmesh_input%max_shells_h) &
         call io_error('Error: number of shell in shell_list must be between zero and six', stdout, seedname)
       if (allocated(kmesh_input%shell_list)) deallocate (kmesh_input%shell_list)
       allocate (kmesh_input%shell_list(kmesh_input%num_shells), stat=ierr)
@@ -592,7 +596,7 @@ contains
         call io_error('Error: shell_list must contain positive numbers', stdout, seedname)
     else
       if (allocated(kmesh_input%shell_list)) deallocate (kmesh_input%shell_list)
-      allocate (kmesh_input%shell_list(max_shells), stat=ierr)
+      allocate (kmesh_input%shell_list(kmesh_input%max_shells_h), stat=ierr)
       if (ierr /= 0) call io_error('Error allocating shell_list in w90_wannier90_readwrite_read', stdout, seedname)
     end if
 
