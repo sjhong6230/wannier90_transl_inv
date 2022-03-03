@@ -179,6 +179,14 @@ tolerance = ( (1.0e-6, 1.0e-6, 'nnkpts_g1'),
               (1.0e-6, 1.0e-6, 'kpoints_k1'),
               (1.0e-6, 1.0e-6, 'kpoints_k2'))
 
+[WANNIER90_NNKP_HIGHER]
+exe = ../../wannier90.x
+extract_fn = tools parsers.parse_wout.parse
+tolerance = ( (1.0e-6, 1.0e-6, 'completeness_x'),
+              (1.0e-6, 1.0e-6, 'completeness_y'),
+              (1.0e-6, 1.0e-6, 'completeness_z'),
+              (1.0e-6, 1.0e-6, 'completeness_weight'))
+
 [POSTW90_SHCFERMIDAT_OK]
 exe = ../../postw90.x
 extract_fn = tools parsers.parse_shc_dat.parse
