@@ -1152,32 +1152,10 @@ contains
       if (ierr /= 0) call io_error('Error allocating num_z in kmesh_shell_automatic', stdout, seedname)
 
       !find higher finite-diff weights
-      ! To do: make this part a separate function kmesh_get_amat: amat, loop_n(loop_order) -> amat
       ! make test suite(compare nnkp files)
       do loop_order = 1, kmesh_input%finite_diff_order
-        do loop_s = 1, kmesh_input%num_shells
-          num_of_eqs = (1 + loop_order)*(1 + 2*loop_order) !((3, 2n)) (combi. with repetition)
-          num_of_eqs_prev = loop_order*(2*loop_order - 1)
-          if (loop_order .eq. 1) num_of_eqs_prev = 0
-          do loop_i = 1, num_of_eqs
-            do loop_j = 0, 2*loop_order ! 1,2,3,4,5,6 -> xx, xy, yy, xz, yz, zz/ 1,2,...,15 -> xxx, xxy, xyy, yyy, xxz, xyz, ..., zzz/...
-              if ((2*loop_order + 1)*loop_j - loop_j*(loop_j - 1)/2 <= loop_i - 1 &
-                  .and. (2*loop_order + 1)*(loop_j + 1) - (loop_j + 1)*loop_j/2 > loop_i - 1) then
-                num_z(loop_order, loop_i) = loop_j
-                exit
-              endif
-            enddo
-            num_y(loop_order, loop_i) = loop_i - 1 - ((2*loop_order + 1)*num_z(loop_order, loop_i) - num_z(loop_order, loop_i) &
-                                                      *(num_z(loop_order, loop_i) - 1)/2)
-            num_x(loop_order, loop_i) = 2*loop_order - num_y(loop_order, loop_i) - num_z(loop_order, loop_i)
-            do loop_b = 1, multi(kmesh_input%shell_list(loop_s))
-              amat(num_of_eqs_prev + loop_i, loop_s) = amat(num_of_eqs_prev + loop_i, loop_s) &
-                                                       + (bvector(1, loop_b, loop_s)**num_x(loop_order, loop_i)) &
-                                                       *(bvector(2, loop_b, loop_s)**num_y(loop_order, loop_i)) &
-                                                       *(bvector(3, loop_b, loop_s)**num_z(loop_order, loop_i))
-            enddo
-          enddo
-        enddo
+        call kmesh_get_amat(kmesh_input, amat, bvector, multi, loop_order, &
+                            num_x(loop_order, :), num_y(loop_order, :), num_z(loop_order, :))
       enddo
 
       info = 0
@@ -1228,25 +1206,11 @@ contains
         end do
       end if
 
-      !check higher-order version of b1
+      !check if the conditions including (B1) for finite-difference are satisfied
       bsat = .true.
       do loop_order = 1, kmesh_input%finite_diff_order
-        num_of_eqs = (1 + loop_order)*(1 + 2*loop_order)
-        do loop_i = 1, num_of_eqs
-          delta = 0.0_dp
-          do loop_s = 1, kmesh_input%num_shells
-            do loop_b = 1, multi(kmesh_input%shell_list(loop_s))
-              delta = delta + bweight(loop_s)*(bvector(1, loop_b, loop_s)**num_x(loop_order, loop_i)) &
-                      *(bvector(2, loop_b, loop_s)**num_y(loop_order, loop_i)) &
-                      *(bvector(3, loop_b, loop_s)**num_z(loop_order, loop_i))
-            end do
-          end do
-          if (loop_order .eq. 1 .and. (loop_i .eq. 1 .or. loop_i .eq. 3 .or. loop_i .eq. 6)) then
-            if (abs(delta - 1.0_dp) > kmesh_input%tol) bsat = .false.
-          else
-            if (abs(delta) > kmesh_input%tol) bsat = .false. !make eq dimensionless
-          endif
-        enddo
+        call kmesh_check_condition(kmesh_input, bsat, bvector, bweight, multi, loop_order, &
+                                   num_x(loop_order, :), num_y(loop_order, :), num_z(loop_order, :))
       end do
 
       if (.not. bsat) then
@@ -1319,6 +1283,109 @@ contains
     return
 
   end subroutine kmesh_shell_automatic
+
+  !================================================
+  subroutine kmesh_get_amat(kmesh_input, amat, bvector, multi, loop_order, num_x, num_y, num_z)
+    !================================================
+    !
+    !!  Find amat(coefficients to find bweight) and the numbers of x, y, z components for a given order
+    !
+    !================================================
+
+    use w90_types, only: kmesh_input_type
+
+    implicit none
+
+    ! arguments
+    type(kmesh_input_type), intent(inout) :: kmesh_input
+    real(kind=dp), intent(inout) :: amat(:, :)
+    integer, intent(inout) :: num_x(:)
+    integer, intent(inout) :: num_y(:)
+    integer, intent(inout) :: num_z(:)
+    integer, intent(in) :: multi(kmesh_input%search_shells)   ! the number of kpoints in the shell
+    integer, intent(in) :: loop_order
+    real(kind=dp), intent(in) :: bvector(3, maxval(multi), kmesh_input%max_shells_h)
+
+    ! local variables
+    integer :: num_of_eqs, num_of_eqs_prev
+    integer :: loop_i, loop_j, loop_s, loop_b
+
+    num_of_eqs = (1 + loop_order)*(1 + 2*loop_order) !((3, 2n)) (combi. with repetition)
+    num_of_eqs_prev = loop_order*(2*loop_order - 1)
+    if (loop_order .eq. 1) num_of_eqs_prev = 0
+
+    do loop_s = 1, kmesh_input%num_shells
+      do loop_i = 1, num_of_eqs
+        ! equation index, e.g. If loop_order == 3, (1,2,...,15) -> (xxx, xxy, xyy, yyy, xxz, xyz, ..., zzz)
+        ! find the number of z components corresponding to the current loop_i
+        do loop_j = 0, 2*loop_order
+          if ((2*loop_order + 1)*loop_j - loop_j*(loop_j - 1)/2 <= loop_i - 1 &
+              .and. (2*loop_order + 1)*(loop_j + 1) - (loop_j + 1)*loop_j/2 > loop_i - 1) then
+            num_z(loop_i) = loop_j
+            exit
+          endif
+        enddo
+        ! find the number of x and y components
+        num_y(loop_i) = loop_i - 1 - ((2*loop_order + 1)*num_z(loop_i) - num_z(loop_i) &
+                                      *(num_z(loop_i) - 1)/2)
+        num_x(loop_i) = 2*loop_order - num_y(loop_i) - num_z(loop_i)
+        ! calculate sum_b bb...bbbb
+        do loop_b = 1, multi(kmesh_input%shell_list(loop_s))
+          amat(num_of_eqs_prev + loop_i, loop_s) = amat(num_of_eqs_prev + loop_i, loop_s) &
+                                                   + (bvector(1, loop_b, loop_s)**num_x(loop_i)) &
+                                                   *(bvector(2, loop_b, loop_s)**num_y(loop_i)) &
+                                                   *(bvector(3, loop_b, loop_s)**num_z(loop_i))
+        enddo
+      enddo
+    enddo
+  end subroutine kmesh_get_amat
+
+  !================================================
+  subroutine kmesh_check_condition(kmesh_input, bsat, bvector, bweight, multi, loop_order, num_x, num_y, num_z)
+    !================================================
+    !
+    !!  Check if the obtained bweight satisfy the conditions for finite-difference, including (B1).
+    !
+    !================================================
+
+    use w90_types, only: kmesh_input_type
+
+    implicit none
+
+    ! arguments
+    type(kmesh_input_type), intent(inout) :: kmesh_input
+    logical, intent(inout) :: bsat
+    integer, intent(inout) :: num_x(:)
+    integer, intent(inout) :: num_y(:)
+    integer, intent(inout) :: num_z(:)
+    integer, intent(in) :: multi(kmesh_input%search_shells)   ! the number of kpoints in the shell
+    integer, intent(in) :: loop_order
+    real(kind=dp), intent(in) :: bvector(3, maxval(multi), kmesh_input%max_shells_h)
+    real(kind=dp), intent(in) :: bweight(kmesh_input%max_shells_h)
+
+    ! local variables
+    integer :: num_of_eqs
+    integer :: loop_i, loop_s, loop_b
+    real(kind=dp) :: delta
+
+    num_of_eqs = (1 + loop_order)*(1 + 2*loop_order)
+    do loop_i = 1, num_of_eqs
+      delta = 0.0_dp
+      do loop_s = 1, kmesh_input%num_shells
+        do loop_b = 1, multi(kmesh_input%shell_list(loop_s))
+          delta = delta + bweight(loop_s)*(bvector(1, loop_b, loop_s)**num_x(loop_i)) &
+                  *(bvector(2, loop_b, loop_s)**num_y(loop_i)) &
+                  *(bvector(3, loop_b, loop_s)**num_z(loop_i))
+        end do
+      end do
+      if (loop_order .eq. 1 .and. (loop_i .eq. 1 .or. loop_i .eq. 3 .or. loop_i .eq. 6)) then
+        if (abs(delta - 1.0_dp) > kmesh_input%tol) bsat = .false.
+      else
+        if (abs(delta) > kmesh_input%tol) bsat = .false.
+      endif
+    enddo
+
+  end subroutine kmesh_check_condition
 
   !================================================
   subroutine kmesh_shell_fixed(kmesh_input, print_output, bweight, dnn, kpt_cart, recip_lattice, lmn, &
