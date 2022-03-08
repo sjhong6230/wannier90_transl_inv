@@ -111,6 +111,8 @@ module w90_types
     integer :: num_nnmax_h ! 2*n(4n*2 + 15n + 17)/6
     integer :: finite_diff_order
     !! Higher-order of finite-difference formulas
+    logical :: higher_order_simple
+    !! A simpler algorithm of determining bvectors
     logical :: skip_B1_tests
     !! do not check the B1 condition
     integer, allocatable :: shell_list(:)

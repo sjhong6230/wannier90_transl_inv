@@ -578,6 +578,9 @@ contains
     kmesh_input%max_shells_h = n*(4*n**2 + 15*n + 17)/6
     kmesh_input%num_nnmax_h = 2*kmesh_input%max_shells_h
 
+    kmesh_input%higher_order_simple = .false.
+    call w90_readwrite_get_keyword(stdout, seedname, 'higher_order_simple', found, l_value=kmesh_input%higher_order_simple)
+
     kmesh_input%tol = 0.000001_dp
     call w90_readwrite_get_keyword(stdout, seedname, 'kmesh_tol', found, r_value=kmesh_input%tol)
     if (kmesh_input%tol < 0.0_dp) call io_error('Error: kmesh_tol must be positive', stdout, seedname)
