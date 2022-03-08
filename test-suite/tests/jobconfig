@@ -104,6 +104,12 @@ program = WANNIER90_NNKP_HIGHER
 inputs_args = ('wannier.win', '-pp')
 output = wannier.wout
 
+# Test for the higher-order bvectors and bweights
+[testw90_nnkpt_higher2/]
+program = WANNIER90_NNKP_HIGHER
+inputs_args = ('wannier.win', '-pp')
+output = wannier.wout
+
 # Testing symmetry-adapted WFs, from example21, case of As with s and p
 [testw90_example21_As_sp]
 program = WANNIER90_WOUT_OK
