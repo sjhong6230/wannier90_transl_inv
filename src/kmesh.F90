@@ -1340,7 +1340,7 @@ contains
             if (loop_order - 1 == kmesh_input%finite_diff_order) exit
           endif
         enddo
-        if (loop_order - 1 /= kmesh_input%finite_diff_order) then
+        if (kmesh_input%finite_diff_order /= 1 .and. loop_order - 1 /= kmesh_input%finite_diff_order) then
           if (print_output%iprint > 0) then
             write (stdout, *) ' '
             write (stdout, '(1x,a,a,i3,a)') 'Unable to include all bvectors using the simple algorithm ', &
