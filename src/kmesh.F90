@@ -289,6 +289,28 @@ contains
     Call io_error('kmesh_get: something wrong, found too many nearest neighbours', stdout, seedname)
     end if
 
+    ! higher-order simple algorithm: only take higher-order bvectors parallel to the 1st-order bvectors
+    if (kmesh_input%higher_order_simple) then
+      num_first_shells = kmesh_input%num_shells / kmesh_input%finite_diff_order
+      allocate (bk_first(3, num_first_shells, maxval(multi(1:num_first_shells))), stat=ierr)
+      if (ierr /= 0) call io_error('Error allocating bk_first in kmesh_get', stdout, seedname)
+      ! save the 1st-order bvectors
+      do shell = 1, num_first_shells
+        call kmesh_get_bvectors(kmesh_input, print_output, bk_first(:, shell, 1:multi(shell)), kpt_cart, &
+                                recip_lattice, dnn(shell), lmn, 1, multi(shell), num_kpts, &
+                                seedname, stdout)
+        do i = 2, kmesh_input%finite_diff_order
+          multi(kmesh_input%shell_list(i)) = multi(shell)
+        enddo
+      enddo
+      ! re-calculate nntot
+      kmesh_info%nntot = 0
+      do loop_s = 1, num_first_shells
+        kmesh_info%nntot = kmesh_info%nntot + multi(kmesh_input%shell_list(loop_s))
+      enddo
+      kmesh_info%nntot = kmesh_info%nntot * kmesh_input%finite_diff_order
+    endif
+
     allocate (kmesh_info%nnlist(num_kpts, kmesh_info%nntot), stat=ierr)
     if (ierr /= 0) call io_error('Error in allocating nnlist in kmesh_get', stdout, seedname)
     allocate (kmesh_info%neigh(num_kpts, kmesh_info%nntot/2), stat=ierr)
@@ -316,28 +338,6 @@ contains
       write (stdout, '(1x,a)') '|                        -----   --------------------                        |'
     endif
     !if (index(print_output%devel_flag, 'kmesh_degen') == 0) then
-
-    ! higher-order simple algorithm: only take higher-order bvectors parallel to the 1st-order bvectors
-    if (kmesh_input%higher_order_simple) then
-      num_first_shells = kmesh_input%num_shells/kmesh_input%finite_diff_order
-      allocate (bk_first(3, num_first_shells, maxval(multi(1:num_first_shells))), stat=ierr)
-      if (ierr /= 0) call io_error('Error allocating bk_first in kmesh_get', stdout, seedname)
-      ! save the 1st-order bvectors
-      do shell = 1, num_first_shells
-        call kmesh_get_bvectors(kmesh_input, print_output, bk_first(:, shell, 1:multi(shell)), kpt_cart, &
-                                recip_lattice, dnn(shell), lmn, 1, multi(shell), num_kpts, &
-                                seedname, stdout)
-        do i = 2, kmesh_input%finite_diff_order
-          multi(kmesh_input%shell_list(i)) = multi(shell)
-        enddo
-      enddo
-      ! re-calculate nntot
-      kmesh_info%nntot = 0
-      do loop_s = 1, num_first_shells
-        kmesh_info%nntot = kmesh_info%nntot + multi(kmesh_input%shell_list(loop_s))
-      enddo
-      kmesh_info%nntot = kmesh_info%nntot*kmesh_input%finite_diff_order
-    endif
 
     !
     ! Standard routine
