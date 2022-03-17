@@ -447,3 +447,4 @@ wannier_only = testw90_*
 postw90_only = testpostw90_*
 all = wannier_only postw90_only
 default =  all
+higher = testw90_nnkpt_higher*
