@@ -291,7 +291,7 @@ contains
 
     ! higher-order simple algorithm: only take higher-order bvectors parallel to the 1st-order bvectors
     if (kmesh_input%higher_order_simple) then
-      num_first_shells = kmesh_input%num_shells / kmesh_input%finite_diff_order
+      num_first_shells = kmesh_input%num_shells/kmesh_input%finite_diff_order
       allocate (bk_first(3, num_first_shells, maxval(multi(1:num_first_shells))), stat=ierr)
       if (ierr /= 0) call io_error('Error allocating bk_first in kmesh_get', stdout, seedname)
       ! save the 1st-order bvectors
@@ -308,7 +308,7 @@ contains
       do loop_s = 1, num_first_shells
         kmesh_info%nntot = kmesh_info%nntot + multi(kmesh_input%shell_list(loop_s))
       enddo
-      kmesh_info%nntot = kmesh_info%nntot * kmesh_input%finite_diff_order
+      kmesh_info%nntot = kmesh_info%nntot*kmesh_input%finite_diff_order
     endif
 
     allocate (kmesh_info%nnlist(num_kpts, kmesh_info%nntot), stat=ierr)
@@ -1329,7 +1329,7 @@ contains
       call io_error('kmesh_get_automatic', stdout, seedname)
     end if
 
-    if (kmesh_input%higher_order_simple) then
+    if (kmesh_input%higher_order_simple .and. kmesh_input%finite_diff_order > 1) then
       ! find the shells containing 2b, 3b, ... , Nb, satisfying the higher-order conditions (using distance)
       do shell = 1, kmesh_input%num_shells
         loop_order = 2
