@@ -300,7 +300,7 @@ contains
                                 recip_lattice, dnn(shell), lmn, 1, multi(shell), num_kpts, &
                                 seedname, stdout)
         do i = 2, kmesh_input%finite_diff_order
-          multi(kmesh_input%shell_list(i)) = multi(shell)
+          multi(kmesh_input%shell_list(num_first_shells*(i - 1) + shell)) = multi(shell)
         enddo
       enddo
       ! re-calculate nntot
