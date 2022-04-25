@@ -859,7 +859,7 @@ contains
     write (nnkpout, '(i4)') kmesh_info%nntot
     do nkp = 1, num_kpts
       do nn = 1, kmesh_info%nntot
-        write (nnkpout, '(2i6,3x,3i4)') &
+        write (nnkpout, '(2i8,3x,3i4)') &
           nkp, kmesh_info%nnlist(nkp, nn), (kmesh_info%nncell(i, nkp, nn), i=1, 3)
       end do
     end do
