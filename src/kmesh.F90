@@ -1334,7 +1334,7 @@ contains
       do shell = 1, kmesh_input%num_shells
         loop_order = 2
         do shell_higher = kmesh_input%num_shells + 1, kmesh_input%search_shells
-          if (abs(dnn(shell_higher) - loop_order*dnn(shell)) < eps5) then
+          if (dnn(shell_higher)/loop_order/dnn(shell) < eps5) then
             kmesh_input%shell_list(kmesh_input%num_shells*(loop_order - 1) + shell) = shell_higher
             loop_order = loop_order + 1
             if (loop_order - 1 == kmesh_input%finite_diff_order) exit
