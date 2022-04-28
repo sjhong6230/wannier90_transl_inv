@@ -290,24 +290,31 @@ contains
     end if
 
     ! higher-order simple algorithm: only take higher-order bvectors parallel to the 1st-order bvectors
+    !if (kmesh_input%higher_order_simple) then
+    !  num_first_shells = kmesh_input%num_shells/kmesh_input%finite_diff_order
+    !  allocate (bk_first(3, num_first_shells, maxval(multi(1:num_first_shells))), stat=ierr)
+    !  if (ierr /= 0) call io_error('Error allocating bk_first in kmesh_get', stdout, seedname)
+    !  ! save the 1st-order bvectors
+    !  do shell = 1, num_first_shells
+    !    call kmesh_get_bvectors(kmesh_input, print_output, bk_first(:, shell, 1:multi(shell)), kpt_cart, &
+    !                            recip_lattice, dnn(shell), lmn, 1, multi(shell), num_kpts, &
+    !                            seedname, stdout)
+    !    do i = 2, kmesh_input%finite_diff_order
+    !      multi(kmesh_input%shell_list(num_first_shells*(i - 1) + shell)) = multi(shell)
+    !    enddo
+    !  enddo
+    !  ! re-calculate nntot
+    !  kmesh_info%nntot = 0
+    !  do loop_s = 1, num_first_shells
+    !    kmesh_info%nntot = kmesh_info%nntot + multi(kmesh_input%shell_list(loop_s))
+    !  enddo
+    !  kmesh_info%nntot = kmesh_info%nntot*kmesh_input%finite_diff_order
+    !endif
+
+    ! higher-order simple algorithm: include 2b, 3b, ..., Nb shells, and modify bweights
     if (kmesh_input%higher_order_simple) then
-      num_first_shells = kmesh_input%num_shells/kmesh_input%finite_diff_order
-      allocate (bk_first(3, num_first_shells, maxval(multi(1:num_first_shells))), stat=ierr)
-      if (ierr /= 0) call io_error('Error allocating bk_first in kmesh_get', stdout, seedname)
-      ! save the 1st-order bvectors
-      do shell = 1, num_first_shells
-        call kmesh_get_bvectors(kmesh_input, print_output, bk_first(:, shell, 1:multi(shell)), kpt_cart, &
-                                recip_lattice, dnn(shell), lmn, 1, multi(shell), num_kpts, &
-                                seedname, stdout)
-        do i = 2, kmesh_input%finite_diff_order
-          multi(kmesh_input%shell_list(num_first_shells*(i - 1) + shell)) = multi(shell)
-        enddo
-      enddo
-      ! re-calculate nntot
-      kmesh_info%nntot = 0
-      do loop_s = 1, num_first_shells
-        kmesh_info%nntot = kmesh_info%nntot + multi(kmesh_input%shell_list(loop_s))
-      enddo
+      ! update num_shells, nntot, shell_list, bweight, dnn(distance to shells) and multi
+      call kmesh_shell_simple_reconstruct(kmesh_input, multi, dnn, bweight)
       kmesh_info%nntot = kmesh_info%nntot*kmesh_input%finite_diff_order
     endif
 
@@ -363,21 +370,21 @@ contains
               kmesh_info%nncell(3, nkp, nnx) = n
               bk_local(:, nnx, nkp) = vkpp(:) - kpt_cart(:, nkp)
               ! check if a new bk is parallel to 1st-order bvectors; if not, exclude
-              if (kmesh_input%higher_order_simple) then
-                lpar = .false.
-                do shell = 1, num_first_shells
-                  do loop_b = 1, multi(shell)
-                    ddelta = dot_product(bk_first(:, shell, loop_b), bk_local(:, nnx, nkp))/ &
-                             sqrt(dot_product(bk_first(:, shell, loop_b), bk_first(:, shell, loop_b))* &
-                                  dot_product(bk_local(:, nnx, nkp), bk_local(:, nnx, nkp)))
-                    if (abs(abs(ddelta) - 1.0_dp) < eps6) lpar = .true.
-                  enddo
-                enddo
-                if (.not. lpar) then
-                  nnx = nnx - 1
-                  nnshell(nkp, ndnn) = nnshell(nkp, ndnn) - 1
-                endif
-              endif
+              !if (kmesh_input%higher_order_simple) then
+              !  lpar = .false.
+              !  do shell = 1, num_first_shells
+              !    do loop_b = 1, multi(shell)
+              !      ddelta = dot_product(bk_first(:, shell, loop_b), bk_local(:, nnx, nkp))/ &
+              !               sqrt(dot_product(bk_first(:, shell, loop_b), bk_first(:, shell, loop_b))* &
+              !                    dot_product(bk_local(:, nnx, nkp), bk_local(:, nnx, nkp)))
+              !      if (abs(abs(ddelta) - 1.0_dp) < eps6) lpar = .true.
+              !    enddo
+              !  enddo
+              !  if (.not. lpar) then
+              !    nnx = nnx - 1
+              !    nnshell(nkp, ndnn) = nnshell(nkp, ndnn) - 1
+              !  endif
+              !endif
             endif
             !if we have the right number of neighbours we can exit
             if (nnshell(nkp, ndnn) == multi(ndnn)) cycle ok
@@ -386,11 +393,10 @@ contains
         ! check to see if too few neighbours here
       end do ok
     end do
-    if (kmesh_input%higher_order_simple) then
-      deallocate (bk_first)
-      if (ierr /= 0) call io_error('Error deallocating bk_first in kmesh_get', stdout, seedname)
-    endif
-
+    !if (kmesh_input%higher_order_simple) then
+    !  deallocate (bk_first)
+    !  if (ierr /= 0) call io_error('Error deallocating bk_first in kmesh_get', stdout, seedname)
+    !endif
     nnx = 0
     do loop_s = 1, kmesh_input%num_shells
       do loop_b = 1, multi(kmesh_input%shell_list(loop_s))
@@ -470,6 +476,7 @@ contains
     if (.not. kmesh_input%skip_B1_tests) then
       do nkp = 1, num_kpts
         do i = 1, kmesh_input%finite_diff_order
+          if (kmesh_input%higher_order_simple .and. i > 1) exit
           do j = 1, (1 + i)*(1 + 2*i)
             ! separate cartesian components
             do l = 0, 2*i
@@ -509,7 +516,9 @@ contains
 
     if (print_output%iprint > 0) then
       write (stdout, '(1x,a)') '| Completeness relation is fully satisfied [Eq. (B1), PRB 56, 12847 (1997)]  |'
-      write (stdout, '(1x,a)') '| Completeness relations for higher-order are fully satisfied                |'
+      if (.not. kmesh_input%higher_order_simple) then
+        write (stdout, '(1x,a)') '| Completeness relations for higher-order are fully satisfied                |'
+      endif
       write (stdout, '(1x,"+",76("-"),"+")')
     endif
 
@@ -1099,7 +1108,8 @@ contains
 
     real(kind=dp), dimension(:), allocatable :: singv, tmp1, tmp2, tmp3
     real(kind=dp), dimension(:, :), allocatable :: amat, umat, vmat, smat, tmp0
-    real(kind=dp) :: work((kmesh_input%max_shells_h)*10)
+    real(kind=dp) :: target(kmesh_input%max_shells_aux)
+    real(kind=dp) :: work((kmesh_input%max_shells_aux)*10)
     !real(kind=dp), parameter :: target(6) = (/1.0_dp, 1.0_dp, 1.0_dp, 0.0_dp, 0.0_dp, 0.0_dp/)
     logical :: lpar
     integer :: loop_i, loop_j, loop_bn, loop_b, loop_s, info, cur_shell, ierr
@@ -1110,15 +1120,15 @@ contains
     ! variables for higher-order finite-difference
     integer, dimension(:, :), allocatable :: num_x, num_y, num_z
     logical :: bsat
-    real(kind=dp) :: target(kmesh_input%max_shells_h), bweight_temp, fact
+    real(kind=dp) :: bweight_temp, fact
     integer :: loop_order, num_of_eqs, num_of_eqs_prev, finite_diff_order_local, shell_higher
 
-    target = 0.0_dp; target(1) = 1.0_dp; target(3) = 1.0_dp; target(6) = 1.0_dp
     if (kmesh_input%higher_order_simple) then
-      finite_diff_order_local = 1 !simple algorithm -> find 1st-order b and weights first
+      finite_diff_order_local = 1 !simple algorithm -> find 1st-order b and weights first in this subroutine
     else
       finite_diff_order_local = kmesh_input%finite_diff_order
     endif
+    target = 0.0_dp; target(1) = 1.0_dp; target(3) = 1.0_dp; target(6) = 1.0_dp
 
     if (print_output%timing_level > 1) call io_stopwatch('kmesh: shell_automatic', 1, stdout, seedname)
 
@@ -1174,21 +1184,21 @@ contains
       kmesh_input%num_shells = kmesh_input%num_shells + 1
       kmesh_input%shell_list(kmesh_input%num_shells) = shell
 
-      allocate (tmp0(kmesh_input%max_shells_h, kmesh_input%max_shells_h), stat=ierr)
+      allocate (tmp0(kmesh_input%max_shells_aux, kmesh_input%max_shells_aux), stat=ierr)
       if (ierr /= 0) call io_error('Error allocating amat in kmesh_shell_automatic', stdout, seedname)
-      allocate (tmp1(kmesh_input%max_shells_h), stat=ierr)
+      allocate (tmp1(kmesh_input%max_shells_aux), stat=ierr)
       if (ierr /= 0) call io_error('Error allocating amat in kmesh_shell_automatic', stdout, seedname)
       allocate (tmp2(kmesh_input%num_shells), stat=ierr)
       if (ierr /= 0) call io_error('Error allocating amat in kmesh_shell_automatic', stdout, seedname)
       allocate (tmp3(kmesh_input%num_shells), stat=ierr)
       if (ierr /= 0) call io_error('Error allocating amat in kmesh_shell_automatic', stdout, seedname)
-      allocate (amat(kmesh_input%max_shells_h, kmesh_input%num_shells), stat=ierr)
+      allocate (amat(kmesh_input%max_shells_aux, kmesh_input%num_shells), stat=ierr)
       if (ierr /= 0) call io_error('Error allocating amat in kmesh_shell_automatic', stdout, seedname)
-      allocate (umat(kmesh_input%max_shells_h, kmesh_input%max_shells_h), stat=ierr)
+      allocate (umat(kmesh_input%max_shells_aux, kmesh_input%max_shells_aux), stat=ierr)
       if (ierr /= 0) call io_error('Error allocating umat in kmesh_shell_automatic', stdout, seedname)
       allocate (vmat(kmesh_input%num_shells, kmesh_input%num_shells), stat=ierr)
       if (ierr /= 0) call io_error('Error allocating vmat in kmesh_shell_automatic', stdout, seedname)
-      allocate (smat(kmesh_input%num_shells, kmesh_input%max_shells_h), stat=ierr)
+      allocate (smat(kmesh_input%num_shells, kmesh_input%max_shells_aux), stat=ierr)
       if (ierr /= 0) call io_error('Error allocating smat in kmesh_shell_automatic', stdout, seedname)
       allocate (singv(kmesh_input%num_shells), stat=ierr)
       if (ierr /= 0) call io_error('Error allocating singv in kmesh_shell_automatic', stdout, seedname)
@@ -1210,9 +1220,9 @@ contains
       enddo
 
       info = 0
-      call dgesvd('A', 'A', kmesh_input%max_shells_h, kmesh_input%num_shells, amat, &
-                  kmesh_input%max_shells_h, singv, umat, &
-                  kmesh_input%max_shells_h, vmat, kmesh_input%num_shells, work, kmesh_input%max_shells_h*10, info)
+      call dgesvd('A', 'A', kmesh_input%max_shells_aux, kmesh_input%num_shells, amat, &
+                  kmesh_input%max_shells_aux, singv, umat, &
+                  kmesh_input%max_shells_aux, vmat, kmesh_input%num_shells, work, kmesh_input%max_shells_aux*10, info)
       if (info < 0) then
         if (print_output%iprint > 0) then
           write (stdout, '(1x,a,1x,I1,1x,a)') 'kmesh_shell_automatic: Argument', abs(info), &
@@ -1329,47 +1339,102 @@ contains
       call io_error('kmesh_get_automatic', stdout, seedname)
     end if
 
-    if (kmesh_input%higher_order_simple .and. kmesh_input%finite_diff_order > 1) then
-      ! find the shells containing 2b, 3b, ... , Nb, satisfying the higher-order conditions (using distance)
-      do shell = 1, kmesh_input%num_shells
-        loop_order = 2
-        do shell_higher = kmesh_input%num_shells + 1, kmesh_input%search_shells
-          if (dnn(shell_higher)/loop_order/dnn(shell) < eps5) then
-            kmesh_input%shell_list(kmesh_input%num_shells*(loop_order - 1) + shell) = shell_higher
-            loop_order = loop_order + 1
-            if (loop_order - 1 == kmesh_input%finite_diff_order) exit
-          endif
-        enddo
-        if (kmesh_input%finite_diff_order /= 1 .and. loop_order - 1 /= kmesh_input%finite_diff_order) then
-          if (print_output%iprint > 0) then
-            write (stdout, *) ' '
-            write (stdout, '(1x,a,a,i3,a)') 'Unable to include all bvectors using the simple algorithm ', &
-              'with any of the first ', kmesh_input%search_shells, ' shells'
-            write (stdout, '(1x,a)') 'Your cell might be very long, or you may have an irregular MP grid'
-            write (stdout, '(1x,a)') 'Try increasing the parameter search_shells in the win file (default=36)'
-            write (stdout, *) ' '
-          end if
-          call io_error('kmesh_get_automatic', stdout, seedname)
-        endif
-        ! calculate new bweights w_b, w_2b, ..., w_Nb
-        bweight_temp = bweight(shell)
-        do loop_i = 1, kmesh_input%finite_diff_order
-          fact = 1.0_dp/loop_i**2
-          do loop_j = 1, kmesh_input%finite_diff_order
-            if (loop_j == loop_i) cycle
-            fact = (fact*loop_j**2)/(loop_j**2 - loop_i**2)
-          enddo
-          bweight(kmesh_input%num_shells*(loop_i - 1) + shell) = bweight_temp*fact
-        enddo
-      enddo
-      kmesh_input%num_shells = kmesh_input%finite_diff_order*kmesh_input%num_shells
-    end if
+    !if (kmesh_input%higher_order_simple .and. kmesh_input%finite_diff_order > 1) then
+    !  ! find the shells containing 2b, 3b, ... , Nb, satisfying the higher-order conditions (using distance)
+    !  write(stdout,*) "shell      ", "shell_higher   ", "loop_order   ", "dnn(shell)  ", "dnn(shell_higher)  ", &
+    !                 "abs(dnn(shell_higher)- loop_order*dnn(shell)) < eps5"
+    !  do shell = 1, kmesh_input%num_shells
+    !    loop_order = 2
+    !    do shell_higher = kmesh_input%num_shells + 1, kmesh_input%search_shells
+    !      !if (dnn(shell_higher)/loop_order/dnn(shell) < eps5) then
+    !      write(stdout,*) shell, shell_higher, loop_order, dnn(shell), dnn(shell_higher), &
+    !                 abs(dnn(shell_higher)- loop_order*dnn(shell)) < eps5
+    !      if (abs(dnn(shell_higher)- loop_order*dnn(shell)) < eps5) then
+    !        kmesh_input%shell_list(kmesh_input%num_shells*(loop_order - 1) + shell) = shell_higher
+    !        loop_order = loop_order + 1
+    !        if (loop_order - 1 == kmesh_input%finite_diff_order) exit
+    !      endif
+    !    enddo
+    !    if (kmesh_input%finite_diff_order /= 1 .and. loop_order - 1 /= kmesh_input%finite_diff_order) then
+    !      if (print_output%iprint > 0) then
+    !        write (stdout, *) ' '
+    !        write (stdout, '(1x,a,a,i3,a)') 'Unable to include all bvectors using the simple algorithm ', &
+    !          'with any of the first ', kmesh_input%search_shells, ' shells'
+    !        write (stdout, '(1x,a)') 'Your cell might be very long, or you may have an irregular MP grid'
+    !        write (stdout, '(1x,a)') 'Try increasing the parameter search_shells in the win file (default=36)'
+    !        write (stdout, *) ' '
+    !      end if
+    !      call io_error('kmesh_get_automatic', stdout, seedname)
+    !    endif
+    !    ! calculate new bweights w_b, w_2b, ..., w_Nb
+    !    bweight_temp = bweight(shell)
+    !    do loop_i = 1, kmesh_input%finite_diff_order
+    !      fact = 1.0_dp/loop_i**2
+    !      do loop_j = 1, kmesh_input%finite_diff_order
+    !        if (loop_j == loop_i) cycle
+    !        fact = (fact*loop_j**2)/(loop_j**2 - loop_i**2)
+    !      enddo
+    !      bweight(kmesh_input%num_shells*(loop_i - 1) + shell) = bweight_temp*fact
+    !    enddo
+    !  enddo
+    !  kmesh_input%num_shells = kmesh_input%finite_diff_order*kmesh_input%num_shells
+    !end if
 
     if (print_output%timing_level > 1) call io_stopwatch('kmesh: shell_automatic', 2, stdout, seedname)
 
     return
 
   end subroutine kmesh_shell_automatic
+
+  subroutine kmesh_shell_simple_reconstruct(kmesh_input, multi, dnn, bweight)
+    !================================================
+    !
+    !!  Include more shells to calculate higher-order finite difference: 2b, 3b, ... Nb shells
+    !!  Note: some shells are overwritten
+    !================================================
+    use w90_io, only: io_error, io_stopwatch
+    use w90_types, only: kmesh_input_type, print_output_type
+
+    implicit none
+
+    ! arguments
+    type(kmesh_input_type), intent(inout) :: kmesh_input
+    integer, intent(inout) :: multi(kmesh_input%search_shells)   ! the number of bvectors in the shell
+    real(kind=dp), intent(inout) :: bweight(kmesh_input%max_shells_h)
+    real(kind=dp), intent(inout) :: dnn(kmesh_input%search_shells)
+
+    ! local variables
+    real(kind=dp) :: bweight_temp, fact
+    integer :: shell, order, loop_j
+
+    ! update new shells
+    do order = 2, kmesh_input%finite_diff_order
+      do shell = 1, kmesh_input%num_shells
+        kmesh_input%shell_list((order - 1)*kmesh_input%num_shells + shell) = &
+          (order - 1)*kmesh_input%num_shells + shell
+        multi((order - 1)*kmesh_input%num_shells + shell) = multi(shell)
+        dnn((order - 1)*kmesh_input%num_shells + shell) = dnn(shell)*order
+      enddo
+    enddo
+
+    ! calculate new bweights w_b, w_2b, ..., w_Nb
+    do shell = 1, kmesh_input%num_shells
+      bweight_temp = bweight(shell)
+      do order = 1, kmesh_input%finite_diff_order
+        fact = 1.0_dp/order**2
+        do loop_j = 1, kmesh_input%finite_diff_order
+          if (loop_j == order) cycle
+          fact = (fact*loop_j**2)/(loop_j**2 - order**2)
+        enddo
+        bweight(kmesh_input%num_shells*(order - 1) + shell) = bweight_temp*fact
+      enddo
+    enddo
+
+    kmesh_input%num_shells = kmesh_input%num_shells*kmesh_input%finite_diff_order
+
+    return
+
+  end subroutine kmesh_shell_simple_reconstruct
 
   !================================================
   subroutine kmesh_get_amat(kmesh_input, amat, bvector, multi, loop_order, num_x, num_y, num_z)
