@@ -570,6 +570,9 @@ contains
     kmesh_input%search_shells = 36
     call w90_readwrite_get_keyword(stdout, seedname, 'search_shells', found, i_value=kmesh_input%search_shells)
     if (kmesh_input%search_shells < 0) call io_error('Error: search_shells must be positive', stdout, seedname)
+    kmesh_input%search_supcell_size = 5
+    call w90_readwrite_get_keyword(stdout, seedname, 'search_supcell_size', found, i_value=kmesh_input%search_supcell_size)
+    if (kmesh_input%search_supcell_size < 0) call io_error('Error: search_supcell_size must be positive', stdout, seedname)
 
     kmesh_input%finite_diff_order = 1
     call w90_readwrite_get_keyword(stdout, seedname, 'finite_diff_order', found, i_value=kmesh_input%finite_diff_order)

@@ -118,6 +118,7 @@ module w90_types
     !! do not check the B1 condition
     integer, allocatable :: shell_list(:)
     integer :: search_shells
+    integer :: search_supcell_size !Size of supercell (of recip cell) in which to search for k-point shells
     real(kind=dp) :: tol
   end type kmesh_input_type
 

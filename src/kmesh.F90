@@ -102,13 +102,13 @@ contains
     integer :: num_x((1 + kmesh_input%finite_diff_order)*(1 + 2*kmesh_input%finite_diff_order))
     integer :: num_y((1 + kmesh_input%finite_diff_order)*(1 + 2*kmesh_input%finite_diff_order))
     integer :: num_z((1 + kmesh_input%finite_diff_order)*(1 + 2*kmesh_input%finite_diff_order))
-    integer :: num_first_shells
+    integer :: num_first_shells, ndnn2, nnx2, multi_cumulative
     logical :: lpar
 
     integer, allocatable :: nnlist_tmp(:, :), nncell_tmp(:, :, :) ![ysl]
     integer :: ifound, counter, na, nap, loop_s, loop_b, shell !, nbvec, bnum
     integer :: ifpos, ifneg, ierr, multi(max(kmesh_input%search_shells, 6*kmesh_input%finite_diff_order))
-    integer :: lmn(3, (2*nsupcell + 1)**3) ! Order in which to search the cells (ordered in dist from origin)
+    integer :: lmn(3, (2*kmesh_input%search_supcell_size + 1)**3) ! Order in which to search the cells (ordered in dist from origin)
     integer :: nlist, nkp, nkp2, l, m, n, ndnn, ndnnx, ndnntot
     integer :: nnshell(num_kpts, max(kmesh_input%search_shells, 6*kmesh_input%finite_diff_order))
     integer :: nnsh, nn, nnx, loop, i, j
@@ -121,7 +121,7 @@ contains
       '*---------------------------------- K-MESH ----------------------------------*'
 
     ! Sort the cell neighbours so we loop in order of distance from the home shell
-    call kmesh_supercell_sort(print_output, recip_lattice, lmn, seedname, stdout)
+    call kmesh_supercell_sort(print_output, kmesh_input%search_supcell_size, recip_lattice, lmn, seedname, stdout)
 
     allocate (kpt_cart(3, num_kpts), stat=ierr)
     if (ierr /= 0) call io_error('Error allocating kpt_cart in kmesh_get', stdout, seedname)
@@ -137,7 +137,7 @@ contains
     ndnntot = 0
     do nlist = 1, kmesh_input%search_shells
       do nkp = 1, num_kpts
-        do loop = 1, (2*nsupcell + 1)**3
+        do loop = 1, (2*kmesh_input%search_supcell_size + 1)**3
           l = lmn(1, loop); m = lmn(2, loop); n = lmn(3, loop)
           !
           vkpp = kpt_cart(:, nkp) + matmul(lmn(:, loop), recip_lattice)
@@ -354,7 +354,7 @@ contains
       nnx = 0
       ok: do ndnnx = 1, kmesh_input%num_shells
         ndnn = kmesh_input%shell_list(ndnnx)
-        do loop = 1, (2*nsupcell + 1)**3
+        do loop = 1, (2*kmesh_input%search_supcell_size + 1)**3
           l = lmn(1, loop); m = lmn(2, loop); n = lmn(3, loop)
           vkpp2 = matmul(lmn(:, loop), recip_lattice)
           do nkp2 = 1, num_kpts
@@ -369,22 +369,6 @@ contains
               kmesh_info%nncell(2, nkp, nnx) = m
               kmesh_info%nncell(3, nkp, nnx) = n
               bk_local(:, nnx, nkp) = vkpp(:) - kpt_cart(:, nkp)
-              ! check if a new bk is parallel to 1st-order bvectors; if not, exclude
-              !if (kmesh_input%higher_order_simple) then
-              !  lpar = .false.
-              !  do shell = 1, num_first_shells
-              !    do loop_b = 1, multi(shell)
-              !      ddelta = dot_product(bk_first(:, shell, loop_b), bk_local(:, nnx, nkp))/ &
-              !               sqrt(dot_product(bk_first(:, shell, loop_b), bk_first(:, shell, loop_b))* &
-              !                    dot_product(bk_local(:, nnx, nkp), bk_local(:, nnx, nkp)))
-              !      if (abs(abs(ddelta) - 1.0_dp) < eps6) lpar = .true.
-              !    enddo
-              !  enddo
-              !  if (.not. lpar) then
-              !    nnx = nnx - 1
-              !    nnshell(nkp, ndnn) = nnshell(nkp, ndnn) - 1
-              !  endif
-              !endif
             endif
             !if we have the right number of neighbours we can exit
             if (nnshell(nkp, ndnn) == multi(ndnn)) cycle ok
@@ -400,15 +384,49 @@ contains
 
     ! higher-order simple algorithm: include 2b, 3b, ..., Nb shells, and modify bweights
     if (kmesh_input%higher_order_simple) then
-      do nn = 2, kmesh_input%finite_diff_order
-        do nnx = 1, kmesh_info%nntot/kmesh_input%finite_diff_order
-          bk_local(:, (nn - 1)*kmesh_info%nntot/kmesh_input%finite_diff_order + nnx, :) = nn*bk_local(:, nnx, :)
+      ! update num_shells, shell_list, dnn(distance to shells), multi, etc.
+      call kmesh_shell_simple_reconstruct(kmesh_input, num_kpts, multi, dnn, nnshell, bweight)
+
+      ! update bk_local
+      ! update nnlist(neighboring kpts), and nncell(G_lmn vectors of neighbors)
+      do nkp = 1, num_kpts
+        do nn = 2, kmesh_input%finite_diff_order
+          multi_cumulative = 0
+          do ndnn = 1, kmesh_input%num_shells/kmesh_input%finite_diff_order !first-order shells
+            ! ndnn: index of shells (first order)
+            ! ndnn2: index of shells (nn-th-order)
+            ndnn2 = (nn - 1)*kmesh_input%num_shells/kmesh_input%finite_diff_order + ndnn
+            do nnx = 1 + multi_cumulative, multi(ndnn) + multi_cumulative
+              counter = 0
+              ! nnx: index of bvectors (first order)
+              ! nnx2: index of bvectors (nn-th-order)
+              nnx2 = (nn - 1)*kmesh_info%nntot/kmesh_input%finite_diff_order + nnx
+              bk_local(:, nnx2, nkp) = nn*bk_local(:, nnx, nkp)
+              ! find nnlist and nncell
+              do loop = 1, (2*kmesh_input%search_supcell_size + 1)**3
+                l = lmn(1, loop); m = lmn(2, loop); n = lmn(3, loop)
+                vkpp2 = matmul(lmn(:, loop), recip_lattice) !G_lmn vector
+                do nkp2 = 1, num_kpts
+                  vkpp = vkpp2 + kpt_cart(:, nkp2) - kpt_cart(:, nkp)
+                  ! if kp2 - kp1 == bk_local(:, nnx2, :)
+                  call utility_compar(vkpp(1), bk_local(1, nnx2, nkp), ifpos, ifneg)
+                  if (ifpos .eq. 1) then
+                    counter = counter + 1
+                    kmesh_info%nnlist(nkp, nnx2) = nkp2
+                    kmesh_info%nncell(1, nkp, nnx2) = l
+                    kmesh_info%nncell(2, nkp, nnx2) = m
+                    kmesh_info%nncell(3, nkp, nnx2) = n
+                  endif
+                enddo
+              enddo
+              if (counter == 0) call io_error('Could not find Nb vectors, try to increase search_supcell_size', stdout, seedname)
+              if (counter >= 2) call io_error('Error in kmesh_get, try to modify tolerance in utility_compar', stdout, seedname)
+            enddo
+            multi_cumulative = multi_cumulative + multi(ndnn)
+          enddo
         enddo
       enddo
-      ! update num_shells, shell_list, dnn(distance to shells), etc.
-      call kmesh_shell_simple_reconstruct(kmesh_input, num_kpts, multi, dnn, nnshell, bweight)
     endif
-
     nnx = 0
     do loop_s = 1, kmesh_input%num_shells
       do loop_b = 1, multi(kmesh_input%shell_list(loop_s))
@@ -424,7 +442,7 @@ contains
     !nnshell = 0
     !do nkp = 1, num_kpts
     !  nnx = 0
-    !  ok2: do loop = 1, (2*nsupcell + 1)**3
+    !  ok2: do loop = 1, (2*kmesh_input%search_supcell_size + 1)**3
     !    l = lmn(1, loop); m = lmn(2, loop); n = lmn(3, loop)
     !    vkpp2 = matmul(lmn(:, loop), recip_lattice)
     !    do nkp2 = 1, num_kpts
@@ -959,7 +977,7 @@ contains
   end subroutine kmesh_dealloc
 
   !================================================
-  subroutine kmesh_supercell_sort(print_output, recip_lattice, lmn, seedname, stdout)
+  subroutine kmesh_supercell_sort(print_output, nsupcell, recip_lattice, lmn, seedname, stdout)
     !================================================
     !! We look for kpoint neighbours in a large supercell of reciprocal
     !! unit cells. Done sequentially this is very slow.
@@ -973,7 +991,7 @@ contains
     implicit none
 
     type(print_output_type), intent(in) :: print_output
-
+    integer, intent(in) :: nsupcell
     integer, intent(in) :: stdout
     integer, intent(inout) :: lmn(:, :)
     real(kind=dp), intent(in) :: recip_lattice(3, 3)
@@ -1005,7 +1023,7 @@ contains
     end do
 
     do loop = (2*nsupcell + 1)**3, 1, -1
-      indx = internal_maxloc(dist)
+      indx = internal_maxloc(dist, nsupcell)
       dist_cp(loop) = dist(indx(1))
       lmn_cp(:, loop) = lmn(:, indx(1))
       dist(indx(1)) = -1.0_dp
@@ -1058,7 +1076,7 @@ contains
     bvector = 0.0_dp
 
     num_bvec = 0
-    ok: do loop = 1, (2*nsupcell + 1)**3
+    ok: do loop = 1, (2*kmesh_input%search_supcell_size + 1)**3
       vkpp2 = matmul(lmn(:, loop), recip_lattice)
       do nkp2 = 1, num_kpts
         vkpp = vkpp2 + kpt_cart(:, nkp2)
@@ -1419,9 +1437,23 @@ contains
 
     ! local variables
     real(kind=dp) :: bweight_temp, fact
-    integer :: shell, order, loop_j
+    integer :: shell, order, loop_j, temp_multi(kmesh_input%num_shells), temp_nnshell(num_kpts, kmesh_input%num_shells)
+    real(kind=dp) :: temp_dnn(kmesh_input%num_shells)
 
-    ! update new shells
+    ! update new shells (after simplify the first-order shell list, e.g. 1,4,6, ... -> 1,2,3,...)
+    do shell = 1, kmesh_input%num_shells
+      temp_multi(shell) = multi(kmesh_input%shell_list(shell))
+      temp_nnshell(:, shell) = nnshell(:, kmesh_input%shell_list(shell))
+      temp_dnn(shell) = dnn(kmesh_input%shell_list(shell))
+    enddo
+
+    do shell = 1, kmesh_input%num_shells
+      kmesh_input%shell_list(shell) = shell
+      multi(shell) = temp_multi(shell)
+      nnshell(:, shell) = temp_nnshell(:, shell)
+      dnn(shell) = temp_dnn(shell)
+    enddo
+
     do order = 2, kmesh_input%finite_diff_order
       do shell = 1, kmesh_input%num_shells
         kmesh_input%shell_list((order - 1)*kmesh_input%num_shells + shell) = &
@@ -1922,7 +1954,7 @@ contains
   end subroutine kmesh_shell_from_file
 
   !================================================
-  function internal_maxloc(dist)
+  function internal_maxloc(dist, nsupcell)
     !================================================
     !!  A reproducible maxloc function
     !!  so b-vectors come in the same
@@ -1932,7 +1964,7 @@ contains
     use w90_constants, only: eps8
 
     implicit none
-
+    integer, intent(in) :: nsupcell
     real(kind=dp), intent(in)  :: dist((2*nsupcell + 1)**3)
     !! Distances from the origin of the unit cells in the supercell.
     integer :: internal_maxloc
