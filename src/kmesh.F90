@@ -473,7 +473,7 @@ contains
     ! We know it is true for kpt=1; but we check the rest to be safe.
     ! Eq. B1 in Appendix  B PRB 56 12847 (1997)
 
-    if (.not. kmesh_input%skip_B1_tests) then
+    if (.not. (kmesh_input%skip_B1_tests .or. kmesh_input%higher_order_simple)) then
       do nkp = 1, num_kpts
         do i = 1, kmesh_input%finite_diff_order
           if (kmesh_input%higher_order_simple .and. i > 1) exit
