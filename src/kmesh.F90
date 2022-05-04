@@ -1468,10 +1468,10 @@ contains
     do shell = 1, kmesh_input%num_shells
       bweight_temp = bweight(shell)
       do order = 1, kmesh_input%finite_diff_order
-        fact = 1.0_dp/order**2
+        fact = 1.0_dp/REAL(order**2, DP)
         do loop_j = 1, kmesh_input%finite_diff_order
           if (loop_j == order) cycle
-          fact = (fact*loop_j**2)/(loop_j**2 - order**2)
+          fact = (fact*REAL(loop_j**2, DP))/REAL(loop_j**2 - order**2, DP)
         enddo
         bweight(kmesh_input%num_shells*(order - 1) + shell) = bweight_temp*fact
       enddo
