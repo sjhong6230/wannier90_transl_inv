@@ -65,7 +65,8 @@ contains
 
     use w90_constants, only: eps6
     use w90_io, only: io_error, io_stopwatch
-    use w90_utility, only: utility_compar, utility_recip_lattice, utility_frac_to_cart
+    use w90_utility, only: utility_compar, utility_recip_lattice, utility_frac_to_cart, &
+      utility_cart_to_frac, utility_inverse_mat
     use w90_types, only: kmesh_info_type, kmesh_input_type, print_output_type
 
     implicit none
@@ -96,13 +97,13 @@ contains
     ! higher-order finite-difference
     real(kind=dp) :: bweight(kmesh_input%max_shells_h)
     real(kind=dp) :: wb_local(kmesh_input%num_nnmax_h)
-    real(kind=dp) :: bk_local(3, kmesh_input%num_nnmax_h, num_kpts)
-    real(kind=dp) :: bkl_norm, bka_norm, bkl_normalized(3), bka_normalized(3)
+    real(kind=dp) :: bk_local(3, kmesh_input%num_nnmax_h, num_kpts), bk_latt(3)
+    real(kind=dp) :: bkl_norm, bka_norm, bkl_normalized(3), bka_normalized(3), inv_lattice(3, 3)
     real(kind=dp), allocatable :: bk_first(:, :, :)
     integer :: num_x((1 + kmesh_input%finite_diff_order)*(1 + 2*kmesh_input%finite_diff_order))
     integer :: num_y((1 + kmesh_input%finite_diff_order)*(1 + 2*kmesh_input%finite_diff_order))
     integer :: num_z((1 + kmesh_input%finite_diff_order)*(1 + 2*kmesh_input%finite_diff_order))
-    integer :: num_first_shells, ndnn2, nnx2, multi_cumulative
+    integer :: num_first_shells, ndnn2, nnx2, multi_cumulative, lmn_temp(3)
     logical :: lpar
 
     integer, allocatable :: nnlist_tmp(:, :), nncell_tmp(:, :, :) ![ysl]
@@ -117,6 +118,7 @@ contains
     if (print_output%timing_level > 0) call io_stopwatch('kmesh: get', 1, stdout, seedname)
 
     call utility_recip_lattice(real_lattice, recip_lattice, volume, stdout, seedname)
+    call utility_inverse_mat(recip_lattice, inv_lattice)
     if (print_output%iprint > 0) write (stdout, '(/1x,a)') &
       '*---------------------------------- K-MESH ----------------------------------*'
 
@@ -403,23 +405,41 @@ contains
               nnx2 = (nn - 1)*kmesh_info%nntot/kmesh_input%finite_diff_order + nnx
               bk_local(:, nnx2, nkp) = nn*bk_local(:, nnx, nkp)
               ! find nnlist and nncell
-              do loop = 1, (2*kmesh_input%search_supcell_size + 1)**3
-                l = lmn(1, loop); m = lmn(2, loop); n = lmn(3, loop)
-                vkpp2 = matmul(lmn(:, loop), recip_lattice) !G_lmn vector
-                do nkp2 = 1, num_kpts
-                  vkpp = vkpp2 + kpt_cart(:, nkp2) - kpt_cart(:, nkp)
-                  ! if kp2 - kp1 == bk_local(:, nnx2, :)
-                  call utility_compar(vkpp(1), bk_local(1, nnx2, nkp), ifpos, ifneg)
-                  if (ifpos .eq. 1) then
-                    counter = counter + 1
-                    kmesh_info%nnlist(nkp, nnx2) = nkp2
-                    kmesh_info%nncell(1, nkp, nnx2) = l
-                    kmesh_info%nncell(2, nkp, nnx2) = m
-                    kmesh_info%nncell(3, nkp, nnx2) = n
-                  endif
-                enddo
+              !do loop = 1, (2*kmesh_input%search_supcell_size + 1)**3
+              !  l = lmn(1, loop); m = lmn(2, loop); n = lmn(3, loop)
+              !  vkpp2 = matmul(lmn(:, loop), recip_lattice) !G_lmn vector
+              !  do nkp2 = 1, num_kpts
+              !    vkpp = vkpp2 + kpt_cart(:, nkp2) - kpt_cart(:, nkp)
+              !    ! if kp2 - kp1 == bk_local(:, nnx2, :)
+              !    call utility_compar(vkpp(1), bk_local(1, nnx2, nkp), ifpos, ifneg)
+              !    if (ifpos .eq. 1) then
+              !      counter = counter + 1
+              !      kmesh_info%nnlist(nkp, nnx2) = nkp2
+              !      kmesh_info%nncell(1, nkp, nnx2) = l
+              !      kmesh_info%nncell(2, nkp, nnx2) = m
+              !      kmesh_info%nncell(3, nkp, nnx2) = n
+              !    endif
+              !  enddo
+              !enddo
+              ! do not search supcell
+              ! find nnlist(nkp2) and nncell(lmn)
+              call utility_cart_to_frac(bk_local(:, nnx2, nkp), bk_latt, inv_lattice)
+              lmn_temp(1) = floor(kpt_latt(1, nkp) + bk_latt(1) + 1.e-8_dp) ! e.g. 3.999999999 is 4
+              lmn_temp(2) = floor(kpt_latt(2, nkp) + bk_latt(2) + 1.e-8_dp)
+              lmn_temp(3) = floor(kpt_latt(3, nkp) + bk_latt(3) + 1.e-8_dp)
+              vkpp2 = matmul(lmn_temp, recip_lattice) !G_lmn vector
+              do nkp2 = 1, num_kpts
+                vkpp = kpt_cart(:, nkp) + bk_local(:, nnx2, nkp) - vkpp2 ! k_2 = k_1 + Nb - G_lmn
+                call utility_compar(kpt_cart(:, nkp2), vkpp, ifpos, ifneg)
+                if (ifpos .eq. 1) then
+                  counter = counter + 1
+                  kmesh_info%nnlist(nkp, nnx2) = nkp2
+                  kmesh_info%nncell(1, nkp, nnx2) = lmn_temp(1)
+                  kmesh_info%nncell(2, nkp, nnx2) = lmn_temp(2)
+                  kmesh_info%nncell(3, nkp, nnx2) = lmn_temp(3)
+                endif
               enddo
-              if (counter == 0) call io_error('Could not find Nb vectors, try to increase search_supcell_size', stdout, seedname)
+              if (counter == 0) call io_error('Could not find Nb vectors', stdout, seedname)
               if (counter >= 2) call io_error('Error in kmesh_get, try to modify tolerance in utility_compar', stdout, seedname)
             enddo
             multi_cumulative = multi_cumulative + multi(ndnn)
