@@ -566,7 +566,7 @@ contains
 
     if (print_output%iprint > 0) then
       write (stdout, '(1x,a)') '| Completeness relation is fully satisfied [Eq. (B1), PRB 56, 12847 (1997)]  |'
-      if (.not. kmesh_input%higher_order_simple) then
+      if ((.not. kmesh_input%higher_order_simple) .and. (kmesh_input%finite_diff_order .gt. 1)) then
         write (stdout, '(1x,a)') '| Completeness relations for higher-order are fully satisfied                |'
       endif
       write (stdout, '(1x,"+",76("-"),"+")')
