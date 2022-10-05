@@ -424,9 +424,9 @@ contains
               ! do not search supcell
               ! find nnlist(nkp2) and nncell(lmn)
               call utility_cart_to_frac(bk_local(:, nnx2, nkp), bk_latt, inv_lattice)
-              lmn_temp(1) = floor(kpt_latt(1, nkp) + bk_latt(1) + 1.e-8_dp) ! e.g. 3.999999999 is 4
-              lmn_temp(2) = floor(kpt_latt(2, nkp) + bk_latt(2) + 1.e-8_dp)
-              lmn_temp(3) = floor(kpt_latt(3, nkp) + bk_latt(3) + 1.e-8_dp)
+              lmn_temp(1) = floor(kpt_latt(1, nkp) + bk_latt(1) + 1.e-6_dp) ! e.g. 3.999999999 is 4
+              lmn_temp(2) = floor(kpt_latt(2, nkp) + bk_latt(2) + 1.e-6_dp)
+              lmn_temp(3) = floor(kpt_latt(3, nkp) + bk_latt(3) + 1.e-6_dp)
               vkpp2 = matmul(lmn_temp, recip_lattice) !G_lmn vector
               do nkp2 = 1, num_kpts
                 vkpp = kpt_cart(:, nkp) + bk_local(:, nnx2, nkp) - vkpp2 ! k_2 = k_1 + Nb - G_lmn
