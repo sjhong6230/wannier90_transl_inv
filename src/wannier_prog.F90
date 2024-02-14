@@ -63,7 +63,6 @@ program wannier
 
   use w90_comms, only: w90_comm_type, comms_sync_err
   use w90_io, only: io_print_timings, io_commandline, io_date, prterr
-  use w90_readwrite, only: w90_readwrite_write_header
   use w90_sitesym, only: sitesym_read
   use w90_error, only: w90_error_type, set_error_input
 
