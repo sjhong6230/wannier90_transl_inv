@@ -167,7 +167,7 @@ contains
     implicit none
 
     ! arguments
-    type(kmesh_info_type), intent(in) :: kmesh_info
+    type(kmesh_info_type), intent(inout) :: kmesh_info
     type(print_output_type), intent(in)      :: print_output
     type(select_projection_type), intent(in) :: select_projection
     type(sitesym_type), intent(in) :: sitesym
@@ -200,11 +200,14 @@ contains
     integer, allocatable :: map_kpts(:)
     integer :: mmn_in, amn_in, num_mmn, num_amn
     integer :: nb_tmp, nkp_tmp, nntot_tmp, np_tmp, ierr
-    integer :: nkp, nkp2, nkp_loc, inn, nn, n, m
+    integer :: nkp, nkp2, nkp_loc, loop_kpt, inn, inn2, nn, n, m, i
     integer :: nnl, nnm, nnn, ncount
     logical :: nn_found
     real(kind=dp) :: m_real, m_imag, a_real, a_imag
     complex(kind=dp), allocatable :: mmn_tmp(:, :)
+    complex(kind=dp), allocatable :: m_matrix_unsort(:, :, :, :)
+    integer, allocatable :: temp(:)
+    integer, allocatable :: global_k(:)
     character(len=50) :: dummy
 
     logical :: disentanglement
@@ -223,6 +226,18 @@ contains
       if (dist_k(nkp) == my_node_id) then
         map_kpts(nkp) = nkp_loc
         nkp_loc = nkp_loc + 1
+      endif
+    enddo
+    allocate (global_k(nkp_loc-1), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating local kpoint distribution in wann_main', comm)
+      return
+    end if
+    loop_kpt = 1
+    do i = 1, num_kpts
+      if (dist_k(i) == my_node_id) then
+        global_k(loop_kpt) = i
+        loop_kpt = loop_kpt + 1
       endif
     enddo
 
@@ -265,6 +280,11 @@ contains
       call set_error_alloc(error, 'Error in allocating mmn_tmp in overlap_read', comm)
       return
     endif
+    allocate (m_matrix_unsort(num_bands, num_bands, kmesh_info%nntot, nkp_loc-1), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating m_matrix_unsort in overlap_read', comm)
+      return
+    endif
     do ncount = 1, num_mmn
       read (mmn_in, *, err=103, end=103) nkp, nkp2, nnl, nnm, nnn
       do n = 1, num_bands
@@ -297,7 +317,7 @@ contains
           call set_error_file(error, 'Neighbour not found', comm)
           return
         end if
-        m_matrix_local(:, :, nn, map_kpts(nkp)) = mmn_tmp(:, :)
+        m_matrix_unsort(:, :, nn, map_kpts(nkp)) = mmn_tmp(:, :)
       end if
     end do
     deallocate (mmn_tmp, stat=ierr)
@@ -306,6 +326,37 @@ contains
       return
     endif
     close (mmn_in)
+
+    ! Sort the overlaps in the same neighbor b vector order
+    do nkp = 1, nkp_loc-1
+      do inn = 1, kmesh_info%nntot
+        do inn2 = 1, kmesh_info%nntot
+          if (sum(abs(kmesh_info%bk(:, inn, 1) - kmesh_info%bk(:, inn2, global_k(nkp)))) < 1.0e-12) then
+            write(*, *) inn, inn2
+            m_matrix_local(:, :, inn, nkp) = m_matrix_unsort(:, :, inn2, nkp)
+            exit
+          endif
+        enddo
+      enddo
+    enddo
+
+    allocate (temp(kmesh_info%nntot), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating temp in overlap_read', comm)
+      return
+    endif
+    do nkp = 1, num_kpts
+      do inn = 1, kmesh_info%nntot
+        do inn2 = 1, kmesh_info%nntot
+          if (sum(abs(kmesh_info%bk(:, inn, 1) - kmesh_info%bk(:, inn2, nkp))) < 1.0e-12) then
+            temp(inn) = kmesh_info%nnlist(nkp, inn2)
+            exit
+          endif
+        enddo
+      enddo
+      kmesh_info%nnlist(nkp, :) = temp(:)
+      kmesh_info%bk(:, :, nkp) = kmesh_info%bk(:, :, 1)
+    enddo
 
     !if (disentanglement) then
     !  w = num_bands*num_bands*kmesh_info%nntot
@@ -411,6 +462,12 @@ contains
     !~        write(stdout,'(1x,"+",76("-"),"+")')
     !~      end if
     ![ysl-e]
+
+    deallocate (m_matrix_unsort, stat=ierr)
+    if (ierr /= 0) then
+      call set_error_dealloc(error, 'Error in deallocating m_matrix_unsort in overlap_read', comm)
+      return
+    endif
 
     deallocate (map_kpts)
     if (timing_level > 0) call io_stopwatch_stop('overlap: read', timer)

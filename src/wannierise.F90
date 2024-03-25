@@ -2112,6 +2112,17 @@ contains
       if (allocated(error)) return
 
       r2ave = r2ave + rave2
+
+      deallocate (sum_mnn, stat=ierr)
+      if (ierr /= 0) then
+        call set_error_dealloc(error, 'Error in deallocating sum_mnn in wann_omega', comm)
+        return
+      endif
+      deallocate (bk, stat=ierr)
+      if (ierr /= 0) then
+        call set_error_dealloc(error, 'Error in deallocating bk in wann_omega', comm)
+        return
+      endif
     else
       do nkp_loc = 1, nkrank
         nkp = global_k(nkp_loc)
@@ -2404,16 +2415,6 @@ contains
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) call io_stopwatch_stop('wann: omega', timer)
 
-    deallocate (sum_mnn, stat=ierr)
-    if (ierr /= 0) then
-      call set_error_dealloc(error, 'Error in deallocating sum_mnn in wann_omega', comm)
-      return
-    endif
-    deallocate (bk, stat=ierr)
-    if (ierr /= 0) then
-      call set_error_dealloc(error, 'Error in deallocating bk in wann_omega', comm)
-      return
-    endif
     return
 
   end subroutine wann_omega
