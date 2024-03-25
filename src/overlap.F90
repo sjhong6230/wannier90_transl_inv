@@ -328,12 +328,14 @@ contains
     close (mmn_in)
 
     ! Sort the overlaps in the same neighbor b vector order
+    ! with b and -b are nntot/2 far apart
     do nkp = 1, nkp_loc-1
-      do inn = 1, kmesh_info%nntot
+      do inn = 1, kmesh_info%nntot / 2
         do inn2 = 1, kmesh_info%nntot
           if (sum(abs(kmesh_info%bk(:, inn, 1) - kmesh_info%bk(:, inn2, global_k(nkp)))) < 1.0e-12) then
             m_matrix_local(:, :, inn, nkp) = m_matrix_unsort(:, :, inn2, nkp)
-            exit
+          else if (sum(abs(kmesh_info%bk(:, inn, 1) + kmesh_info%bk(:, inn2, global_k(nkp)))) < 1.0e-12) then
+            m_matrix_local(:, :, inn + kmesh_info%nntot / 2, nkp) = m_matrix_unsort(:, :, inn2, nkp)
           endif
         enddo
       enddo
@@ -345,11 +347,12 @@ contains
       return
     endif
     do nkp = 1, num_kpts
-      do inn = 1, kmesh_info%nntot
+      do inn = 1, kmesh_info%nntot / 2
         do inn2 = 1, kmesh_info%nntot
           if (sum(abs(kmesh_info%bk(:, inn, 1) - kmesh_info%bk(:, inn2, nkp))) < 1.0e-12) then
             temp(inn) = kmesh_info%nnlist(nkp, inn2)
-            exit
+          else if (sum(abs(kmesh_info%bk(:, inn, 1) + kmesh_info%bk(:, inn2, nkp))) < 1.0e-12) then
+            temp(inn + kmesh_info%nntot / 2) = kmesh_info%nnlist(nkp, inn2)
           endif
         enddo
       enddo
