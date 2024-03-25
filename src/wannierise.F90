@@ -2033,9 +2033,8 @@ contains
     real(kind=dp) :: mnn2
     complex(kind=dp) :: summ
     complex(kind=dp), allocatable :: sum_mnn(:, :)
-    real(kind=dp), allocatable :: bk(:,:)
     real(kind=dp) :: brn
-    integer :: ind, nkp, nn, nn2, m, n, iw, nkp_loc
+    integer :: ind, nkp, nn, m, n, iw, nkp_loc
     integer :: my_node_id
     integer :: ierr
 
@@ -2049,26 +2048,14 @@ contains
         call set_error_alloc(error, 'Error in allocating sum_mnn in wann_omega', comm)
         return
       endif
-
-      allocate (bk(3,kmesh_info%nntot), stat=ierr)
-      if (ierr /= 0) then
-        call set_error_alloc(error, 'Error in allocating bk in wann_omega', comm)
-        return
-      endif
       
-      bk = kmesh_info%bk(:, :, 1)
       sum_mnn = 0.0_dp
       do n = 1, num_wann
         do nkp_loc = 1, nkrank
           nkp = global_k(nkp_loc)
-          ! Note that this ln_tmp is defined differently wrt the one in wann_domega
           do nn = 1, kmesh_info%nntot
-            do nn2 = 1, kmesh_info%nntot
-              if (sum(abs(kmesh_info%bk(:, nn2, nkp) - bk(:, nn))) < 1.0e-12 ) then
-                sum_mnn(n, nn) = sum_mnn(n, nn) + csheet(n, nn, 1) * m_matrix_loc(n, n, nn2, nkp_loc)
-                exit
-              endif
-            enddo
+            ! Note that this ln_tmp is defined differently wrt the one in wann_domega
+            sum_mnn(n, nn) = sum_mnn(n, nn) + csheet(n, nn, 1) * m_matrix_loc(n, n, nn, nkp_loc)
           enddo
         enddo
       enddo
@@ -2116,11 +2103,6 @@ contains
       deallocate (sum_mnn, stat=ierr)
       if (ierr /= 0) then
         call set_error_dealloc(error, 'Error in deallocating sum_mnn in wann_omega', comm)
-        return
-      endif
-      deallocate (bk, stat=ierr)
-      if (ierr /= 0) then
-        call set_error_dealloc(error, 'Error in deallocating bk in wann_omega', comm)
         return
       endif
     else
@@ -2353,18 +2335,12 @@ contains
 
       if (.NOT. mv_functional) then
         wann_spread%om_d = 0.0_dp
-        bk = kmesh_info%bk(:, :, 1)
         do nn = 1, kmesh_info%nntot
           do n = 1, num_wann
             summ = 0.0_dp
             do nkp_loc = 1, nkrank
               nkp = global_k(nkp_loc)
-              do nn2 = 1, kmesh_info%nntot
-                if (sum(abs(kmesh_info%bk(:, nn2, nkp) - bk(:, nn))) < 1.0e-12 ) then
-                  summ = summ + m_matrix_loc(n, n, nn2, nkp_loc)
-                  exit
-                endif
-              enddo
+              summ = summ + m_matrix_loc(n, n, nn, nkp_loc)
             enddo
 
             call comms_allreduce(summ, 1, 'SUM', error, comm)
@@ -2376,12 +2352,7 @@ contains
             summ = 0.0_dp
             do nkp_loc = 1, nkrank
               nkp = global_k(nkp_loc)
-              do nn2 = 1, kmesh_info%nntot
-                if (sum(abs(kmesh_info%bk(:, nn2, nkp) - bk(:, nn))) < 1.0e-12 ) then
-                  summ = summ + abs(m_matrix_loc(n, n, nn2, nkp_loc))**2
-                  exit
-                endif
-              enddo
+              summ = summ + abs(m_matrix_loc(n, n, nn, nkp_loc))**2
             enddo
 
             call comms_allreduce(summ, 1, 'SUM', error, comm)

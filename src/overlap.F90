@@ -332,7 +332,6 @@ contains
       do inn = 1, kmesh_info%nntot
         do inn2 = 1, kmesh_info%nntot
           if (sum(abs(kmesh_info%bk(:, inn, 1) - kmesh_info%bk(:, inn2, global_k(nkp)))) < 1.0e-12) then
-            write(*, *) inn, inn2
             m_matrix_local(:, :, inn, nkp) = m_matrix_unsort(:, :, inn2, nkp)
             exit
           endif
