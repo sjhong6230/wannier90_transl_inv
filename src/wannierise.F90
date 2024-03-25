@@ -119,7 +119,7 @@ contains
     real(kind=dp), allocatable :: rnkb(:, :, :)
     real(kind=dp), allocatable :: rnkb_loc(:, :, :)
     real(kind=dp), allocatable :: ln_tmp(:, :, :)
-    real(kind=dp), allocatable :: ln_tmp_loc(:, :, :)
+    complex(kind=dp), allocatable :: ln_tmp_loc(:, :, :)
     real(kind=dp), allocatable :: sheet(:, :, :)
     real(kind=dp), allocatable :: rave(:, :), r2ave(:), rave2(:)
     ! guiding centres
@@ -450,8 +450,9 @@ contains
 
     ! calculate initial centers and spread
     call wann_omega(csheet, sheet, rave, r2ave, rave2, wann_spread, num_wann, kmesh_info, &
-                    num_kpts, print_output, wann_control%constrain, omega%invariant, ln_tmp_loc, &
-                    m_matrix_loc, lambda_loc, first_pass, timer, nkrank, global_k, error, comm)
+                    num_kpts, print_output, wann_control%SS_functional, wann_control%constrain, &
+                    omega%invariant, ln_tmp_loc, m_matrix_loc, lambda_loc, first_pass, timer, &
+                    nkrank, global_k, error, comm)
     if (allocated(error)) return
 
     ! public variables
@@ -624,9 +625,9 @@ contains
 
         ! calculate spread at trial step
         call wann_omega(csheet, sheet, rave, r2ave, rave2, trial_spread, num_wann, kmesh_info, &
-                        num_kpts, print_output, wann_control%constrain, omega%invariant, &
-                        ln_tmp_loc, m_matrix_loc, lambda_loc, first_pass, timer, nkrank, global_k, &
-                        error, comm)
+                        num_kpts, print_output, wann_control%SS_functional, wann_control%constrain, &
+                        omega%invariant, ln_tmp_loc, m_matrix_loc, lambda_loc, first_pass, timer, &
+                        nkrank, global_k, error, comm)
         if (allocated(error)) return
 
         ! Calculate optimal step (alphamin)
@@ -687,9 +688,9 @@ contains
 
         ! calculate the new centers and spread
         call wann_omega(csheet, sheet, rave, r2ave, rave2, wann_spread, num_wann, kmesh_info, &
-                        num_kpts, print_output, wann_control%constrain, omega%invariant, &
-                        ln_tmp_loc, m_matrix_loc, lambda_loc, first_pass, timer, nkrank, global_k, &
-                        error, comm)
+                        num_kpts, print_output, wann_control%SS_functional ,wann_control%constrain, & 
+                        omega%invariant, ln_tmp_loc, m_matrix_loc, lambda_loc, first_pass, timer, &
+                        nkrank, global_k, error, comm)
         if (allocated(error)) return
 
         ! parabolic line search was unsuccessful, use trial step already taken
@@ -1977,7 +1978,7 @@ contains
 
   !================================================!
   subroutine wann_omega(csheet, sheet, rave, r2ave, rave2, wann_spread, num_wann, kmesh_info, &
-                        num_kpts, print_output, wann_slwf, omega_invariant, ln_tmp_loc, &
+                        num_kpts, print_output, SS_functional, wann_slwf, omega_invariant, ln_tmp_loc, &
                         m_matrix_loc, lambda_loc, first_pass, timer, nkrank, global_k, error, comm)
     !================================================!
     !
@@ -2013,7 +2014,8 @@ contains
 
     real(kind=dp), intent(in) :: lambda_loc
     real(kind=dp), intent(in) :: omega_invariant
-    real(kind=dp), intent(inout) :: ln_tmp_loc(:, :, :)
+    logical, intent(in) :: SS_functional
+    complex(kind=dp), intent(inout) :: ln_tmp_loc(:, :, :)
     real(kind=dp), intent(in)  :: sheet(:, :, :)
     real(kind=dp), intent(out) :: r2ave(:)
     real(kind=dp), intent(out) :: rave(:, :)
@@ -2023,47 +2025,114 @@ contains
 
     ! local variables
     real(kind=dp) :: summ, mnn2
+    complex(kind=dp), allocatable :: mnn2_temp(:)
     real(kind=dp) :: brn
     integer :: ind, nkp, nn, m, n, iw, nkp_loc
     integer :: my_node_id
+    integer :: ierr
 
     my_node_id = mpirank(comm)
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) call io_stopwatch_start('wann: omega', timer)
 
-    do nkp_loc = 1, nkrank
-      nkp = global_k(nkp_loc)
+    if (SS_functional) then
+      allocate (mnn2_temp(num_kpts), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error in allocating mmn2_temp in wann_omega', comm)
+        return
+      endif
       do nn = 1, kmesh_info%nntot
         do n = 1, num_wann
-          ! Note that this ln_tmp is defined differently wrt the one in wann_domega
-          ln_tmp_loc(n, nn, nkp_loc) = (aimag(log(csheet(n, nn, nkp) &
-                                                  *m_matrix_loc(n, n, nn, nkp_loc))) - sheet(n, nn, nkp))
+          do nkp_loc = 1, nkrank
+            nkp = global_k(nkp_loc)
+            ! Note that this ln_tmp is defined differently wrt the one in wann_domega
+            ln_tmp_loc(n, nn, nkp_loc) = csheet(n, nn, nkp) * m_matrix_loc(n, n, nn, nkp_loc)
+          enddo
+          call comms_allreduce(ln_tmp_loc(n, nn, 1), num_kpts, 'SUM', error, comm)
+          if (allocated(error)) return
+
+          ln_tmp_loc(n, nn, 1) = aimag(log(ln_tmp_loc(n, nn, 1)/real(num_kpts, dp)))
         enddo
       enddo
-    enddo
 
-    rave = 0.0_dp
-    do iw = 1, num_wann
-      do ind = 1, 3
-        do nkp_loc = 1, nkrank
-          nkp = global_k(nkp_loc)
-          do nn = 1, kmesh_info%nntot
-            rave(ind, iw) = rave(ind, iw) + kmesh_info%wb(nn)*kmesh_info%bk(ind, nn, nkp) &
-                            *ln_tmp_loc(iw, nn, nkp_loc)
+
+
+      rave = 0.0_dp
+      do iw = 1, num_wann
+        do ind = 1, 3
+          do nkp_loc = 1, nkrank
+            nkp = global_k(nkp_loc)
+            do nn = 1, kmesh_info%nntot
+              rave(ind, iw) = rave(ind, iw) + kmesh_info%wb(nn)*kmesh_info%bk(ind, nn, nkp) &
+                              *(ln_tmp_loc(iw, nn, 1) - sheet(iw, nn, nkp))
+            enddo
           enddo
         enddo
       enddo
-    enddo
 
-    call comms_allreduce(rave(1, 1), num_wann*3, 'SUM', error, comm)
-    if (allocated(error)) return
+      call comms_allreduce(rave(1, 1), num_wann*3, 'SUM', error, comm)
+      if (allocated(error)) return
 
-    rave = -rave/real(num_kpts, dp)
+      rave = -rave/real(num_kpts, dp)
 
-    rave2 = 0.0_dp
-    do iw = 1, num_wann
-      rave2(iw) = sum(rave(:, iw)*rave(:, iw))
-    enddo
+      rave2 = 0.0_dp
+      do iw = 1, num_wann
+        rave2(iw) = sum(rave(:, iw)*rave(:, iw))
+      enddo
+      
+      r2ave = 0.0_dp
+      do iw = 1, num_wann
+        do nn = 1, kmesh_info%nntot
+          do nkp_loc = 1, nkrank
+            mnn2_temp(nkp_loc) = m_matrix_loc(iw, iw, nn, nkp_loc)
+          enddo
+          call comms_allreduce(mnn2_temp(1), num_kpts, 'SUM', error, comm)
+          if (allocated(error)) return
+
+          mnn2 = abs(mnn2_temp(1) / real(num_kpts, dp))
+
+          r2ave(iw) = r2ave(iw) + kmesh_info%wb(nn)*(2.0_dp - 2*mnn2 + ln_tmp_loc(iw, nn, 1)**2)
+        enddo
+      enddo
+
+      call comms_allreduce(r2ave(1), num_wann, 'SUM', error, comm)
+      if (allocated(error)) return
+
+      r2ave = r2ave/real(num_kpts, dp)
+    else
+      do nkp_loc = 1, nkrank
+        nkp = global_k(nkp_loc)
+        do nn = 1, kmesh_info%nntot
+          do n = 1, num_wann
+            ! Note that this ln_tmp is defined differently wrt the one in wann_domega
+            ln_tmp_loc(n, nn, nkp_loc) = (aimag(log(csheet(n, nn, nkp) &
+                                                    *m_matrix_loc(n, n, nn, nkp_loc))) - sheet(n, nn, nkp))
+          enddo
+        enddo
+      enddo
+
+      rave = 0.0_dp
+      do iw = 1, num_wann
+        do ind = 1, 3
+          do nkp_loc = 1, nkrank
+            nkp = global_k(nkp_loc)
+            do nn = 1, kmesh_info%nntot
+              rave(ind, iw) = rave(ind, iw) + kmesh_info%wb(nn)*kmesh_info%bk(ind, nn, nkp) &
+                              *ln_tmp_loc(iw, nn, nkp_loc)
+            enddo
+          enddo
+        enddo
+      enddo
+
+      call comms_allreduce(rave(1, 1), num_wann*3, 'SUM', error, comm)
+      if (allocated(error)) return
+
+      rave = -rave/real(num_kpts, dp)
+
+      rave2 = 0.0_dp
+      do iw = 1, num_wann
+        rave2(iw) = sum(rave(:, iw)*rave(:, iw))
+      enddo
 
     ! aam: is this useful?
 !~    rtot=0.0_dp
@@ -2073,21 +2142,22 @@ contains
 !~       enddo
 !~    enddo
 
-    r2ave = 0.0_dp
-    do iw = 1, num_wann
-      do nkp_loc = 1, nkrank
-        do nn = 1, kmesh_info%nntot
-          mnn2 = real(m_matrix_loc(iw, iw, nn, nkp_loc) &
+      r2ave = 0.0_dp
+      do iw = 1, num_wann
+        do nkp_loc = 1, nkrank
+          do nn = 1, kmesh_info%nntot
+            mnn2 = real(m_matrix_loc(iw, iw, nn, nkp_loc) &
                       *conjg(m_matrix_loc(iw, iw, nn, nkp_loc)), kind=dp)
-          r2ave(iw) = r2ave(iw) + kmesh_info%wb(nn)*(1.0_dp - mnn2 + ln_tmp_loc(iw, nn, nkp_loc)**2)
+            r2ave(iw) = r2ave(iw) + kmesh_info%wb(nn)*(1.0_dp - mnn2 + ln_tmp_loc(iw, nn, nkp_loc)**2)
+          enddo
         enddo
       enddo
-    enddo
 
-    call comms_allreduce(r2ave(1), num_wann, 'SUM', error, comm)
-    if (allocated(error)) return
+      call comms_allreduce(r2ave(1), num_wann, 'SUM', error, comm)
+      if (allocated(error)) return
 
-    r2ave = r2ave/real(num_kpts, dp)
+      r2ave = r2ave/real(num_kpts, dp)
+    endif
 
 !~    wann_spread%om_1 = 0.0_dp
 !~    do nkp = 1, num_kpts
@@ -2322,7 +2392,7 @@ contains
 
     real(kind=dp), intent(in)  :: sheet(:, :, :)
     real(kind=dp), intent(out) :: rave(:, :)
-    real(kind=dp), intent(inout) :: ln_tmp_loc(:, :, :)
+    complex(kind=dp), intent(inout) :: ln_tmp_loc(:, :, :)
     real(kind=dp), intent(inout) :: rnkb_loc(:, :, :)
     real(kind=dp), intent(in) :: lambda_loc
 
