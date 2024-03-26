@@ -2097,9 +2097,6 @@ contains
         enddo
       enddo
 
-      call comms_allreduce(r2ave(1), num_wann, 'SUM', error, comm)
-      if (allocated(error)) return
-
       r2ave = r2ave + rave2
 
       deallocate (sum_mnn, stat=ierr)
@@ -2451,7 +2448,7 @@ contains
     real(kind=dp), allocatable :: r0kb(:, :, :)
     complex(kind=dp), allocatable :: sum_mnn(:, :)
     integer, allocatable :: map_kpts(:)
-    integer :: iw, ind, nkp, nkp2, nn, m, n, ierr, nkp_loc, nkp2_loc
+    integer :: iw, ind, nkp, nn, m, n, ierr, nkp_loc
     complex(kind=dp) :: mnn, c_n
     integer :: my_node_id
 
@@ -2512,21 +2509,15 @@ contains
         do n = 1, num_wann
           do m = 1, num_wann
             do nn = 1, kmesh_info%nntot
-              nkp2 = kmesh_info%nnlist(nkp, modulo(nn-1+kmesh_info%nntot/2, kmesh_info%nntot)+1)
-              nkp2_loc = map_kpts(nkp2)
               c_n = sum_mnn(n, nn) / real(num_kpts, dp)
               cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) + &
                                       kmesh_info%wb(nn) * m_matrix_loc(m, n, nn, nkp_loc) * conjg(c_n)
-              cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) + &
-                                      kmesh_info%wb(nn) * conjg(m_matrix_loc(n, m, nn, nkp2_loc)) * c_n
               cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) - &
                                       kmesh_info%wb(nn) * conjg(m_matrix_loc(m, n, nn, nkp_loc)) * c_n
-              cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) - &
-                                      kmesh_info%wb(nn) * m_matrix_loc(n, m, nn, nkp2_loc) * conjg(c_n)
             enddo
           enddo
         enddo
-        cdodq_loc = cdodq_loc / real(num_kpts, dp)
+        cdodq_loc = 2*cdodq_loc / real(num_kpts, dp)
       enddo
       
       if (present(cdodq)) then

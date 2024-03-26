@@ -280,7 +280,7 @@ contains
       call set_error_alloc(error, 'Error in allocating mmn_tmp in overlap_read', comm)
       return
     endif
-    allocate (m_matrix_unsort(num_bands, num_bands, kmesh_info%nntot, nkp_loc-1), stat=ierr)
+    allocate (m_matrix_unsort(num_bands, num_bands, kmesh_info%nntot, nkp_loc), stat=ierr)
     if (ierr /= 0) then
       call set_error_alloc(error, 'Error in allocating m_matrix_unsort in overlap_read', comm)
       return
