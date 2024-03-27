@@ -2053,9 +2053,9 @@ contains
       
       sum_mnn = 0.0_dp
       do n = 1, num_wann
-        do nkp_loc = 1, nkrank
-          nkp = global_k(nkp_loc)
-          do nn = 1, kmesh_info%nntot
+        do nn = 1, kmesh_info%nntot
+          do nkp_loc = 1, nkrank
+            nkp = global_k(nkp_loc)
             ! Note that this ln_tmp is defined differently wrt the one in wann_domega
             sum_mnn(n, nn) = sum_mnn(n, nn) + csheet(n, nn, 1) * m_matrix_loc(n, n, nn, nkp_loc)
           enddo
@@ -2065,7 +2065,11 @@ contains
       call comms_allreduce(sum_mnn(1, 1), num_wann*kmesh_info%nntot, 'SUM', error, comm)
       if (allocated(error)) return
 
-      ln_tmp_loc(:, :, 1) = aimag(log(sum_mnn(:, :)/real(num_kpts, dp))) - sheet(:, :, 1)
+      do nkp_loc = 1, nkrank
+        do nn = 1, kmesh_info%nntot
+          ln_tmp_loc(:, nn, nkp_loc) = (aimag(log(sum_mnn(:, nn)/real(num_kpts, dp))) - sheet(:, nn, 1))
+        enddo     
+      enddo
 
       rave = 0.0_dp
       do iw = 1, num_wann
@@ -2073,8 +2077,8 @@ contains
           do nkp_loc = 1, nkrank
             nkp = global_k(nkp_loc)
             do nn = 1, kmesh_info%nntot
-              rave(ind, iw) = rave(ind, iw) + kmesh_info%wb(nn)*kmesh_info%bk(ind, nn, 1) &
-                              *ln_tmp_loc(iw, nn, 1)
+              rave(ind, iw) = rave(ind, iw) + kmesh_info%wb(nn)*kmesh_info%bk(ind, nn, nkp) &
+                              *ln_tmp_loc(iw, nn, nkp_loc)
             enddo
           enddo
         enddo
@@ -2452,6 +2456,9 @@ contains
     complex(kind=dp) :: mnn, c_n
     integer :: my_node_id
 
+    my_node_id = mpirank(comm)
+    if (timing_level > 1 .and. iprint > 0) call io_stopwatch_start('wann: domega', timer)
+
     allocate (map_kpts(num_kpts))
     nkp_loc = 1
     do nkp = 1, num_kpts
@@ -2460,9 +2467,6 @@ contains
         nkp_loc = nkp_loc + 1
       endif
     enddo
-
-    my_node_id = mpirank(comm)
-    if (timing_level > 1 .and. iprint > 0) call io_stopwatch_start('wann: domega', timer)
 
     allocate (cr(num_wann, num_wann), stat=ierr)
     if (ierr /= 0) then
@@ -2491,9 +2495,9 @@ contains
 
       sum_mnn = 0.0_dp
       do n = 1, num_wann
-        do nkp_loc = 1, nkrank
-          nkp = global_k(nkp_loc)
-          do nn = 1, kmesh_info%nntot
+        do nn = 1, kmesh_info%nntot
+          do nkp_loc = 1, nkrank
+            nkp = global_k(nkp_loc)
             ! Note that this ln_tmp is defined differently wrt the one in wann_domega
             sum_mnn(n, nn) = sum_mnn(n, nn) + csheet(n, nn, 1) * m_matrix_loc(n, n, nn, nkp_loc)
           enddo
@@ -2503,17 +2507,55 @@ contains
       call comms_allreduce(sum_mnn(1, 1), num_wann*kmesh_info%nntot, 'SUM', error, comm)
       if (allocated(error)) return
 
-      cdodq_loc = cmplx_0
+      do nkp_loc = 1, nkrank
+        do nn = 1, kmesh_info%nntot
+          ln_tmp_loc(:, nn, nkp_loc) = kmesh_info%wb(nn)*(aimag(log(sum_mnn(:, nn)/real(num_kpts, dp))) - sheet(:, nn, 1))
+        enddo     
+      enddo
+
+      rave = 0.0_dp
+      do iw = 1, num_wann
+        do ind = 1, 3
+          do nkp_loc = 1, nkrank
+            nkp = global_k(nkp_loc)
+            do nn = 1, kmesh_info%nntot
+              rave(ind, iw) = rave(ind, iw) + kmesh_info%bk(ind, nn, nkp) * ln_tmp_loc(iw, nn, nkp_loc)
+            enddo
+          enddo
+        enddo
+      enddo
+
+      call comms_allreduce(rave(1, 1), num_wann*3, 'SUM', error, comm)
+      if (allocated(error)) return
+
+      rave = -rave/real(num_kpts, dp)
+
+      rnkb_loc = 0.0_dp
       do nkp_loc = 1, nkrank
         nkp = global_k(nkp_loc)
+        do nn = 1, kmesh_info%nntot
+          do n = 1, num_wann
+            rnkb_loc(n, nn, nkp_loc) = sum(kmesh_info%bk(:, nn, nkp)*rave(:, n))
+          enddo
+        enddo
+      enddo
+
+      cdodq_loc = cmplx_0
+      do nkp_loc = 1, nkrank
         do n = 1, num_wann
           do m = 1, num_wann
             do nn = 1, kmesh_info%nntot
               c_n = sum_mnn(n, nn) / real(num_kpts, dp)
               cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) + &
                                       kmesh_info%wb(nn) * m_matrix_loc(m, n, nn, nkp_loc) * conjg(c_n)
+              cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) + &
+                                      kmesh_info%wb(nn) * m_matrix_loc(m, n, modulo(nn-1+kmesh_info%nntot, kmesh_info%nntot)+1, nkp_loc) * &
+                                      c_n
               cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) - &
                                       kmesh_info%wb(nn) * conjg(m_matrix_loc(m, n, nn, nkp_loc)) * c_n
+              cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) - &
+                                      kmesh_info%wb(nn) * conjg(m_matrix_loc(m, n, modulo(nn-1+kmesh_info%nntot, kmesh_info%nntot)+1, nkp_loc) * &
+                                      c_n)
             enddo
           enddo
         enddo
