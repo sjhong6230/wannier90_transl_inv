@@ -2052,8 +2052,8 @@ contains
       endif
       
       sum_mnn = 0.0_dp
-      do n = 1, num_wann
-        do nn = 1, kmesh_info%nntot
+      do nn = 1, kmesh_info%nntot
+        do n = 1, num_wann
           do nkp_loc = 1, nkrank
             nkp = global_k(nkp_loc)
             ! Note that this ln_tmp is defined differently wrt the one in wann_domega
@@ -2065,10 +2065,10 @@ contains
       call comms_allreduce(sum_mnn(1, 1), num_wann*kmesh_info%nntot, 'SUM', error, comm)
       if (allocated(error)) return
 
+      sum_mnn = sum_mnn / real(num_kpts, dp)
+      
       do nkp_loc = 1, nkrank
-        do nn = 1, kmesh_info%nntot
-          ln_tmp_loc(:, nn, nkp_loc) = (aimag(log(sum_mnn(:, nn)/real(num_kpts, dp))) - sheet(:, nn, 1))
-        enddo     
+          ln_tmp_loc(:, :, nkp_loc) = aimag(log(sum_mnn(:, :))) - sheet(:, :, 1)
       enddo
 
       rave = 0.0_dp
@@ -2084,10 +2084,10 @@ contains
         enddo
       enddo
 
-      call comms_allreduce(rave(1, 1), num_wann*3, 'SUM', error, comm)
+      call comms_allreduce(rave(1, 1), 3*num_wann, 'SUM', error, comm)
       if (allocated(error)) return
 
-      rave = -rave/real(num_kpts, dp)
+      rave = -rave / real(num_kpts, dp)
 
       rave2 = 0.0_dp
       do iw = 1, num_wann
@@ -2095,10 +2095,8 @@ contains
       enddo
       
       r2ave = 0.0_dp
-      do iw = 1, num_wann
-        do nn = 1, kmesh_info%nntot
-          r2ave(iw) = r2ave(iw) + kmesh_info%wb(nn)*(1.0_dp - abs(sum_mnn(iw, nn)/real(num_kpts, dp))**2)
-        enddo
+      do nn = 1, kmesh_info%nntot
+        r2ave(:) = r2ave(:) + kmesh_info%wb(nn)*(1.0_dp - abs(sum_mnn(:, nn))**2)
       enddo
 
       r2ave = r2ave + rave2
@@ -2108,7 +2106,7 @@ contains
         call set_error_dealloc(error, 'Error in deallocating sum_mnn in wann_omega', comm)
         return
       endif
-    else
+    else 
       do nkp_loc = 1, nkrank
         nkp = global_k(nkp_loc)
         do nn = 1, kmesh_info%nntot
@@ -2452,7 +2450,7 @@ contains
     real(kind=dp), allocatable :: r0kb(:, :, :)
     complex(kind=dp), allocatable :: sum_mnn(:, :)
     integer, allocatable :: map_kpts(:)
-    integer :: iw, ind, nkp, nn, m, n, ierr, nkp_loc
+    integer :: iw, ind, nkp, nn, nn2, m, n, ierr, nkp_loc
     complex(kind=dp) :: mnn, c_n
     integer :: my_node_id
 
@@ -2507,10 +2505,10 @@ contains
       call comms_allreduce(sum_mnn(1, 1), num_wann*kmesh_info%nntot, 'SUM', error, comm)
       if (allocated(error)) return
 
+      sum_mnn = sum_mnn / real(num_kpts, dp)
+
       do nkp_loc = 1, nkrank
-        do nn = 1, kmesh_info%nntot
-          ln_tmp_loc(:, nn, nkp_loc) = kmesh_info%wb(nn)*(aimag(log(sum_mnn(:, nn)/real(num_kpts, dp))) - sheet(:, nn, 1))
-        enddo     
+        ln_tmp_loc(:, :, nkp_loc) = kmesh_info%wb(nn)*(aimag(log(sum_mnn(:, :))) - sheet(:, :, 1))   
       enddo
 
       rave = 0.0_dp
@@ -2545,22 +2543,25 @@ contains
         do n = 1, num_wann
           do m = 1, num_wann
             do nn = 1, kmesh_info%nntot
-              c_n = sum_mnn(n, nn) / real(num_kpts, dp)
+              nn2 = modulo(nn-1+kmesh_info%nntot/2, kmesh_info%nntot)+1
               cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) + &
-                                      kmesh_info%wb(nn) * m_matrix_loc(m, n, nn, nkp_loc) * conjg(c_n)
+                                      kmesh_info%wb(nn) * m_matrix_loc(m, n, nn, nkp_loc) * &
+                                      conjg(sum_mnn(n, nn))
+              cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) - &
+                                      kmesh_info%wb(nn) * conjg(m_matrix_loc(n, m, nn2, nkp_loc)) * &
+                                      conjg(sum_mnn(m, nn))
+              cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) - &
+                                      kmesh_info%wb(nn) * conjg(m_matrix_loc(n, m, nn, nkp_loc)) * &
+                                      sum_mnn(m, nn)
               cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) + &
-                                      kmesh_info%wb(nn) * m_matrix_loc(m, n, modulo(nn-1+kmesh_info%nntot, kmesh_info%nntot)+1, nkp_loc) * &
-                                      c_n
-              cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) - &
-                                      kmesh_info%wb(nn) * conjg(m_matrix_loc(m, n, nn, nkp_loc)) * c_n
-              cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) - &
-                                      kmesh_info%wb(nn) * conjg(m_matrix_loc(m, n, modulo(nn-1+kmesh_info%nntot, kmesh_info%nntot)+1, nkp_loc) * &
-                                      c_n)
+                                      kmesh_info%wb(nn) * m_matrix_loc(m, n, nn2, nkp_loc) * &
+                                      sum_mnn(n, nn)
             enddo
           enddo
         enddo
-        cdodq_loc = 2*cdodq_loc / real(num_kpts, dp)
       enddo
+
+      cdodq_loc = cdodq_loc / real(num_kpts, dp)
       
       if (present(cdodq)) then
         ! each process communicates its result to other processes
