@@ -327,39 +327,6 @@ contains
     endif
     close (mmn_in)
 
-    ! Sort the overlaps in the same neighbor b vector order
-    ! with b and -b are nntot/2 far apart
-    do nkp = 1, nkp_loc-1
-      do inn = 1, kmesh_info%nntot / 2
-        do inn2 = 1, kmesh_info%nntot
-          if (sum(abs(kmesh_info%bk(:, inn, 1) - kmesh_info%bk(:, inn2, global_k(nkp)))) < 1.0e-12) then
-            m_matrix_local(:, :, inn, nkp) = m_matrix_unsort(:, :, inn2, nkp)
-          else if (sum(abs(kmesh_info%bk(:, inn, 1) + kmesh_info%bk(:, inn2, global_k(nkp)))) < 1.0e-12) then
-            m_matrix_local(:, :, inn + kmesh_info%nntot / 2, nkp) = m_matrix_unsort(:, :, inn2, nkp)
-          endif
-        enddo
-      enddo
-    enddo
-
-    allocate (temp(kmesh_info%nntot), stat=ierr)
-    if (ierr /= 0) then
-      call set_error_alloc(error, 'Error in allocating temp in overlap_read', comm)
-      return
-    endif
-    do nkp = 1, num_kpts
-      do inn = 1, kmesh_info%nntot / 2
-        do inn2 = 1, kmesh_info%nntot
-          if (sum(abs(kmesh_info%bk(:, inn, 1) - kmesh_info%bk(:, inn2, nkp))) < 1.0e-12) then
-            temp(inn) = kmesh_info%nnlist(nkp, inn2)
-          else if (sum(abs(kmesh_info%bk(:, inn, 1) + kmesh_info%bk(:, inn2, nkp))) < 1.0e-12) then
-            temp(inn + kmesh_info%nntot / 2) = kmesh_info%nnlist(nkp, inn2)
-          endif
-        enddo
-      enddo
-      kmesh_info%nnlist(nkp, :) = temp(:)
-      kmesh_info%bk(:, :, nkp) = kmesh_info%bk(:, :, 1)
-    enddo
-
     !if (disentanglement) then
     !  w = num_bands*num_bands*kmesh_info%nntot
     !  call comms_scatterv(m_matrix_orig_local, w*counts(my_node_id), m_matrix_orig, w*counts, w*displs, error, comm)
@@ -464,6 +431,41 @@ contains
     !~        write(stdout,'(1x,"+",76("-"),"+")')
     !~      end if
     ![ysl-e]
+
+    ! Sort the overlaps in the same neighbor b vector order
+    ! with b and -b are nntot/2 far apart
+    do nkp = 1, nkp_loc-1
+      do inn = 1, kmesh_info%nntot / 2
+        do inn2 = 1, kmesh_info%nntot
+          if (sum(abs(kmesh_info%bk(:, inn, 1) - kmesh_info%bk(:, inn2, global_k(nkp)))**2) < 1.0e-12) then
+            m_matrix_local(:, :, inn, nkp) = m_matrix_unsort(:, :, inn2, nkp)
+          else if (sum(abs(kmesh_info%bk(:, inn, 1) + kmesh_info%bk(:, inn2, global_k(nkp)))**2) < 1.0e-12) then
+            m_matrix_local(:, :, inn + kmesh_info%nntot / 2, nkp) = m_matrix_unsort(:, :, inn2, nkp)
+          endif
+        enddo
+      enddo
+    enddo
+
+    
+
+    allocate (temp(kmesh_info%nntot), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating temp in overlap_read', comm)
+      return
+    endif
+    do nkp = 1, num_kpts
+      do inn = 1, kmesh_info%nntot / 2
+        do inn2 = 1, kmesh_info%nntot
+          if (sum(abs(kmesh_info%bk(:, inn, 1) - kmesh_info%bk(:, inn2, nkp))**2) < 1.0e-12) then
+            temp(inn) = kmesh_info%nnlist(nkp, inn2)
+          else if (sum(abs(kmesh_info%bk(:, inn, 1) + kmesh_info%bk(:, inn2, nkp))**2) < 1.0e-12) then
+            temp(inn + kmesh_info%nntot / 2) = kmesh_info%nnlist(nkp, inn2)
+          endif
+        enddo
+      enddo
+      kmesh_info%nnlist(nkp, :) = temp(:)
+      kmesh_info%bk(:, :, nkp) = kmesh_info%bk(:, :, 1)
+    enddo
 
     deallocate (m_matrix_unsort, stat=ierr)
     if (ierr /= 0) then
