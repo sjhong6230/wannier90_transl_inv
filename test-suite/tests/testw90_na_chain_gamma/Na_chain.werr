@@ -1,0 +1,5 @@
+ Wannier90: Execution started on  4Apr2024 at 10:17:50 
+ Exiting.......
+ ERROR: Singular value decomp. zgesvd failed
+ (rank: 0)
+  error encountered; check .wout log

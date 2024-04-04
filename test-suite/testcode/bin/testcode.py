@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python3
 '''testcode [options] [action1 [action2...]]
 
 testcode is a simple framework for comparing output from (principally numeric)

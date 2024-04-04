@@ -3,7 +3,6 @@
     num_dump_cycles   =   500      
     num_wann          =   4 
     use_ws_distance = .false.
-    mv_functional = .false.
 search_shells=12    
     bands_plot        = true
     dis_win_min       = -8.0d0       
