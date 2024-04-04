@@ -579,6 +579,17 @@ contains
         return
       endif
 
+      do na = 1, kmesh_info%nnh
+        do nn = 1, kmesh_info%nntot
+          call utility_compar(kmesh_info%bka(1, na), bk_local(1, nn, 1), ifpos, ifneg)
+          if (ifpos .eq. 1) then
+            kmesh_info%wb(na) = wb_local(nn)
+          else if (ifneg .eq. 1) then
+            kmesh_info%wb(na + kmesh_info%nnh) = wb_local(nn)
+          endif
+        enddo
+      enddo
+
       do nkp = 1, num_kpts
         do na = 1, kmesh_info%nnh
           do nn = 1, kmesh_info%nntot
