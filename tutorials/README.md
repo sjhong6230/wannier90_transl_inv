@@ -76,3 +76,5 @@ tutorial31: Platinum - Selected columns of density matrix algorithm for spinor w
 tutorial32: Tungsten - SCDM parameters from projectability
 
 tutorial33: BC2N - Expansion coefficients for kdotp bands
+
+tutorial34: Silicon - Comparison of Marzari-Vanderbilt and Stengel-Spaldin functionals
