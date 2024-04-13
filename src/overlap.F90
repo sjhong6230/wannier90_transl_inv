@@ -161,6 +161,7 @@ contains
 
     use w90_io, only: io_stopwatch_start, io_stopwatch_stop
     use w90_types, only: kmesh_info_type, print_output_type, timer_list_type
+    use w90_utility, only: utility_compar
     use w90_wannier90_types, only: select_projection_type, sitesym_type
     use w90_error
 
@@ -200,12 +201,13 @@ contains
     integer, allocatable :: map_kpts(:)
     integer :: mmn_in, amn_in, num_mmn, num_amn
     integer :: nb_tmp, nkp_tmp, nntot_tmp, np_tmp, ierr
-    integer :: nkp, nkp2, nkp_loc, loop_kpt, inn, inn2, nn, n, m, i
+    integer :: nkp, nkp2, nkp_loc, loop_kpt, inn, inn2, nn, n, m, i, na, ifpos, ifneg
     integer :: nnl, nnm, nnn, ncount
     logical :: nn_found
     real(kind=dp) :: m_real, m_imag, a_real, a_imag
+    real(kind=dp), allocatable :: tmp(:), temp3(:, :)
     complex(kind=dp), allocatable :: mmn_tmp(:, :)
-    ! complex(kind=dp), allocatable :: m_matrix_unsort(:, :, :, :)
+    complex(kind=dp), allocatable :: m_matrix_unsort(:, :, :, :)
     integer, allocatable :: temp(:), temp2(:, :)
     integer, allocatable :: global_k(:)
     character(len=50) :: dummy
@@ -280,11 +282,11 @@ contains
       call set_error_alloc(error, 'Error in allocating mmn_tmp in overlap_read', comm)
       return
     endif
-    ! allocate (m_matrix_unsort(num_bands, num_bands, kmesh_info%nntot, nkp_loc), stat=ierr)
-    ! if (ierr /= 0) then
-    !   call set_error_alloc(error, 'Error in allocating m_matrix_unsort in overlap_read', comm)
-    !   return
-    ! endif
+    allocate (m_matrix_unsort(num_bands, num_bands, kmesh_info%nntot, nkp_loc), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating m_matrix_unsort in overlap_read', comm)
+      return
+    endif
     do ncount = 1, num_mmn
       read (mmn_in, *, err=103, end=103) nkp, nkp2, nnl, nnm, nnn
       do n = 1, num_bands
@@ -317,7 +319,7 @@ contains
           call set_error_file(error, 'Neighbour not found', comm)
           return
         end if
-        m_matrix_local(:, :, nn, map_kpts(nkp)) = mmn_tmp(:, :)
+        m_matrix_unsort(:, :, nn, map_kpts(nkp)) = mmn_tmp(:, :)
       end if
     end do
     deallocate (mmn_tmp, stat=ierr)
@@ -401,45 +403,70 @@ contains
 
     ! Sort the overlaps in the same neighbor b vector order
     ! with b and -b are nntot/2 far apart
-    ! allocate (temp(kmesh_info%nntot), stat=ierr)
-    ! if (ierr /= 0) then
-    !   call set_error_alloc(error, 'Error in allocating temp in overlap_read', comm)
-    !   return
-    ! endif
-    ! allocate (temp2(3, kmesh_info%nntot), stat=ierr)
-    ! if (ierr /= 0) then
-    !   call set_error_alloc(error, 'Error in allocating temp2 in overlap_read', comm)
-    !   return
-    ! endif
+    allocate (temp(kmesh_info%nntot), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating temp in overlap_read', comm)
+      return
+    endif
+    allocate (temp2(3, kmesh_info%nntot), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating temp2 in overlap_read', comm)
+      return
+    endif
+    allocate (temp3(3, kmesh_info%nntot), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating temp2 in overlap_read', comm)
+      return
+    endif
+    allocate(tmp(kmesh_info%nntot), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating tmp in overlap_read', comm)
+      return
+    endif
 
-    ! do nkp = 1, num_kpts
-    !   do inn = 1, kmesh_info%nntot / 2
-    !     do inn2 = 1, kmesh_info%nntot
-    !       if (sum(abs(kmesh_info%bk(:, inn, 1) - kmesh_info%bk(:, inn2, nkp))**2) < 1.0e-12) then
-    !         if (dist_k(nkp) == my_node_id) then
-    !           m_matrix_local(:, :, inn, map_kpts(nkp)) = m_matrix_unsort(:, :, inn2, map_kpts(nkp))
-    !         endif
-    !         temp(inn) = kmesh_info%nnlist(nkp, inn2)
-    !         temp2(:, inn) = kmesh_info%nncell(:, nkp, inn2)
-    !       else if (sum(abs(kmesh_info%bk(:, inn, 1) + kmesh_info%bk(:, inn2, nkp))**2) < 1.0e-12) then
-    !         if (dist_k(nkp) == my_node_id) then
-    !           m_matrix_local(:, :, inn + kmesh_info%nntot / 2, map_kpts(nkp)) = m_matrix_unsort(:, :, inn2, map_kpts(nkp))
-    !         endif
-    !         temp(inn + kmesh_info%nntot / 2) = kmesh_info%nnlist(nkp, inn2)
-    !         temp2(:, inn + kmesh_info%nntot / 2) = kmesh_info%nncell(:, nkp, inn2)
-    !       endif
-    !     enddo
-    !   enddo
-    !   kmesh_info%nnlist(nkp, :) = temp(:)
-    !   kmesh_info%nncell(:, nkp, :) = temp2(:, :)
-    !   kmesh_info%bk(:, :, nkp) = kmesh_info%bk(:, :, 1)
-    ! enddo
+    do na = 1, kmesh_info%nnh
+      do nn = 1, kmesh_info%nntot
+        call utility_compar(kmesh_info%bka(1, na), kmesh_info%bk(1, nn, 1), ifpos, ifneg)
+        if (ifpos .eq. 1) then
+          tmp(na) = kmesh_info%wb(nn)
+        else if (ifneg .eq. 1) then
+          tmp(na + kmesh_info%nnh) = kmesh_info%wb(nn)
+        endif
+      enddo
+    enddo
+    kmesh_info%wb(:) = tmp(:)
 
-    ! deallocate (m_matrix_unsort, stat=ierr)
-    ! if (ierr /= 0) then
-    !   call set_error_dealloc(error, 'Error in deallocating m_matrix_unsort in overlap_read', comm)
-    !   return
-    ! endif
+    do nkp = 1, num_kpts
+      do na = 1, kmesh_info%nnh
+        do nn = 1, kmesh_info%nntot
+          call utility_compar(kmesh_info%bka(1, na), kmesh_info%bk(1, nn, nkp), ifpos, ifneg)
+          if (ifpos .eq. 1) then
+            temp3(:, na) = kmesh_info%bk(:, nn, nkp)
+            temp(na) = kmesh_info%nnlist(nkp, nn)
+            temp2(:, na) = kmesh_info%nncell(:, nkp, nn)
+            if (dist_k(nkp) == my_node_id) then
+              m_matrix_local(:, :, na, map_kpts(nkp)) = m_matrix_unsort(:, :, nn, map_kpts(nkp))
+            endif
+          else if (ifneg .eq. 1) then
+            temp3(:, na + kmesh_info%nnh) = kmesh_info%bk(:, nn, nkp)
+            temp(na + kmesh_info%nnh) = kmesh_info%nnlist(nkp, nn)
+            temp2(:, na + kmesh_info%nnh) = kmesh_info%nncell(:, nkp, nn)
+            if (dist_k(nkp) == my_node_id) then
+              m_matrix_local(:, :, na + kmesh_info%nnh, map_kpts(nkp)) = m_matrix_unsort(:, :, nn, map_kpts(nkp))
+            endif
+          endif
+        enddo
+      enddo
+      kmesh_info%nnlist(nkp, :) = temp(:)
+      kmesh_info%nncell(:, nkp, :) = temp2(:, :)
+      kmesh_info%bk(:, :, nkp) = temp3(:, :)
+    enddo
+
+    deallocate (m_matrix_unsort, stat=ierr)
+    if (ierr /= 0) then
+      call set_error_dealloc(error, 'Error in deallocating m_matrix_unsort in overlap_read', comm)
+      return
+    endif
 
     ! If post-processing a Car-Parinello calculation (gamma only)
     ! then rotate M and A to the basis of Kohn-Sham eigenstates

@@ -98,7 +98,6 @@ contains
     real(kind=dp) :: vkpp(3), vkpp2(3)
     real(kind=dp) :: wb_local(num_nnmax)
 
-    integer, allocatable :: temp(:), temp2(:, :)
     integer, allocatable :: nnlist_tmp(:, :), nncell_tmp(:, :, :) ![ysl]
     integer :: ifound, counter, na, nap, loop_s, loop_b, shell !, nbvec, bnum
     integer :: ifpos, ifneg, ierr, multi(kmesh_input%search_shells)
@@ -559,86 +558,36 @@ contains
       write (stdout, *) ' '
     endif
 
+    ! find index array
+    do nkp = 1, num_kpts
+      do na = 1, kmesh_info%nnh
+        ! first, zero the index array so we can check it gets filled
+        kmesh_info%neigh(nkp, na) = 0
+        ! now search through list of neighbours of this k-point
+        do nn = 1, kmesh_info%nntot
+          call utility_compar(kmesh_info%bka(1, na), bk_local(1, nn, nkp), ifpos, ifneg)
+          if (ifpos .eq. 1) kmesh_info%neigh(nkp, na) = nn
+        enddo
+        ! check found
+        if (kmesh_info%neigh(nkp, na) .eq. 0) then
+          if (print_output%iprint > 0) write (stdout, *) ' nkp,na=', nkp, na
+          call set_error_fatal(error, 'kmesh_get: failed to find neighbours for this kpoint', comm)
+          return
+        endif
+      enddo
+    enddo
+
     !fill in the global arrays from the local ones
 
     do loop = 1, kmesh_info%nntot
       kmesh_info%wb(loop) = wb_local(loop)
     end do
 
-    ! Sort in the same neighbor b vector order
-    ! with b and -b are nntot/2 far apart
-    if (.NOT. gamma_only) then
-      allocate (temp(kmesh_info%nntot), stat=ierr)
-      if (ierr /= 0) then
-        call set_error_alloc(error, 'Error in allocating temp in overlap_read', comm)
-        return
-      endif
-      allocate (temp2(3, kmesh_info%nntot), stat=ierr)
-      if (ierr /= 0) then
-        call set_error_alloc(error, 'Error in allocating temp2 in overlap_read', comm)
-        return
-      endif
-
-      do na = 1, kmesh_info%nnh
-        do nn = 1, kmesh_info%nntot
-          call utility_compar(kmesh_info%bka(1, na), bk_local(1, nn, 1), ifpos, ifneg)
-          if (ifpos .eq. 1) then
-            kmesh_info%wb(na) = wb_local(nn)
-          else if (ifneg .eq. 1) then
-            kmesh_info%wb(na + kmesh_info%nnh) = wb_local(nn)
-          endif
-        enddo
-      enddo
-
-      do nkp = 1, num_kpts
-        do na = 1, kmesh_info%nnh
-          do nn = 1, kmesh_info%nntot
-            call utility_compar(kmesh_info%bka(1, na), bk_local(1, nn, nkp), ifpos, ifneg)
-            if (ifpos .eq. 1) then
-              kmesh_info%bk(:, na, nkp) = bk_local(:, nn, nkp)
-              temp(na) = kmesh_info%nnlist(nkp, nn)
-              temp2(:, na) = kmesh_info%nncell(:, nkp, nn)
-            else if (ifneg .eq. 1) then
-              kmesh_info%bk(:, na + kmesh_info%nnh, nkp) = bk_local(:, nn, nkp)
-              temp(na + kmesh_info%nnh) = kmesh_info%nnlist(nkp, nn)
-              temp2(:, na + kmesh_info%nnh) = kmesh_info%nncell(:, nkp, nn)
-            endif
-          enddo
-        enddo
-        kmesh_info%nnlist(nkp, :) = temp(:)
-        kmesh_info%nncell(:, nkp, :) = temp2(:, :)
-      enddo
-
-      ! find index array
-      do nkp = 1, num_kpts
-        do na = 1, kmesh_info%nnh
-          ! first, zero the index array so we can check it gets filled
-          kmesh_info%neigh(nkp, na) = 0
-          ! now search through list of neighbours of this k-point
-          do nn = 1, kmesh_info%nntot
-            call utility_compar(kmesh_info%bka(1, na), kmesh_info%bk(1, nn, nkp), ifpos, ifneg)
-            if (ifpos .eq. 1) kmesh_info%neigh(nkp, na) = nn
-          enddo
-          ! check found
-          if (kmesh_info%neigh(nkp, na) .eq. 0) then
-            if (print_output%iprint > 0) write (stdout, *) ' nkp,na=', nkp, na
-            call set_error_fatal(error, 'kmesh_get: failed to find neighbours for this kpoint', comm)
-            return
-          endif
-        enddo
-      enddo
-
-      deallocate (temp, stat=ierr)
-      if (ierr /= 0) then
-        call set_error_dealloc(error, 'Error in deallocating temp in kmesh_get', comm)
-        return
-      endif
-      deallocate (temp2, stat=ierr)
-      if (ierr /= 0) then
-        call set_error_dealloc(error, 'Error in deallocating temp2 in kmesh_get', comm)
-        return
-      endif
-    endif
+    do loop_s = 1, num_kpts
+      do loop = 1, kmesh_info%nntot
+        kmesh_info%bk(:, loop, loop_s) = bk_local(:, loop, loop_s)
+      end do
+    end do
 
 ![ysl-b]
 
