@@ -760,8 +760,8 @@ contains
     type(w90_error_type), allocatable, intent(out) :: error
     type(w90_comm_type), intent(in) :: comm
 
-    real(kind=dp), allocatable :: wb_tmp(:)
-    integer, allocatable :: nnlist_tmp(:), bk_tmp(:, :), nncell_tmp(:, :)
+    real(kind=dp), allocatable :: wb_tmp(:), bk_tmp(:, :)
+    integer, allocatable :: nnlist_tmp(:), nncell_tmp(:, :)
     integer :: na, nn, nkp, ifpos, ifneg, ierr
 
     allocate(wb_tmp(kmesh_info%nntot), stat=ierr)
@@ -823,7 +823,7 @@ contains
       kmesh_info%nncell(:, nkp, :) = nncell_tmp(:, :)
       kmesh_info%bk(:, :, nkp) = bk_tmp(:, :)
     enddo
-
+    
     deallocate (nnlist_tmp, stat=ierr)
     if (ierr /= 0) then
       call set_error_dealloc(error, 'Error in deallocating nnlist_tmp in kmesh_sort', comm)
