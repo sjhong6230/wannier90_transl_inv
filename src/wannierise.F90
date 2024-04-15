@@ -435,7 +435,7 @@ contains
     irguide = 0
     if (wann_control%guiding_centres%enable .and. (wann_control%guiding_centres%num_no_guide_iter .le. 0)) then
       call wann_phases(csheet, sheet, rguide, irguide, num_wann, kmesh_info, num_kpts, &
-                       wann_control%mv_functional, m_matrix_loc, rnkb, print_output%timing_level, &
+                       wann_control%use_ss_functional, m_matrix_loc, rnkb, print_output%timing_level, &
                        print_output%iprint, timer, nkrank, global_k, error, comm)
       if (allocated(error)) return
 
@@ -450,7 +450,7 @@ contains
 
     ! calculate initial centers and spread
     call wann_omega(csheet, sheet, rave, r2ave, rave2, wann_spread, num_wann, kmesh_info, &
-                    num_kpts, print_output, wann_control%mv_functional, wann_control%constrain, &
+                    num_kpts, print_output, wann_control%use_ss_functional, wann_control%constrain, &
                     omega%invariant, ln_tmp_loc, m_matrix_loc, lambda_loc, first_pass, timer, &
                     nkrank, global_k, error, comm)
     if (allocated(error)) return
@@ -548,7 +548,7 @@ contains
           (iter .gt. wann_control%guiding_centres%num_no_guide_iter) &
           .and. (mod(iter, wann_control%guiding_centres%num_guide_cycles) .eq. 0)) then
         call wann_phases(csheet, sheet, rguide, irguide, num_wann, kmesh_info, num_kpts, &
-                         wann_control%mv_functional, m_matrix_loc, rnkb, print_output%timing_level, &
+                         wann_control%use_ss_functional, m_matrix_loc, rnkb, print_output%timing_level, &
                          print_output%iprint, timer, nkrank, global_k, error, comm)
         if (allocated(error)) return
 
@@ -558,7 +558,7 @@ contains
       ! calculate gradient of omega
       if (lsitesymmetry .or. wann_control%precond) then
         call wann_domega(dist_k, csheet, sheet, rave, num_wann, kmesh_info, num_kpts, &
-                         wann_control%constrain, wann_control%mv_functional, lsitesymmetry, &
+                         wann_control%constrain, wann_control%use_ss_functional, lsitesymmetry, &
                          ln_tmp_loc, m_matrix_loc, &
                          rnkb_loc, cdodq_loc, lambda_loc, print_output%timing_level, sitesym, &
                          timer, nkrank, global_k, error, comm, print_output%iprint, cdodq)
@@ -566,7 +566,7 @@ contains
 
       else
         call wann_domega(dist_k, csheet, sheet, rave, num_wann, kmesh_info, num_kpts, &
-                         wann_control%constrain, wann_control%mv_functional, lsitesymmetry, &
+                         wann_control%constrain, wann_control%use_ss_functional, lsitesymmetry, &
                          ln_tmp_loc, m_matrix_loc, &
                          rnkb_loc, cdodq_loc, lambda_loc, print_output%timing_level, sitesym, &
                          timer, nkrank, global_k, error, comm, print_output%iprint)
@@ -627,7 +627,7 @@ contains
 
         ! calculate spread at trial step
         call wann_omega(csheet, sheet, rave, r2ave, rave2, trial_spread, num_wann, kmesh_info, &
-                        num_kpts, print_output, wann_control%mv_functional, wann_control%constrain, &
+                        num_kpts, print_output, wann_control%use_ss_functional, wann_control%constrain, &
                         omega%invariant, ln_tmp_loc, m_matrix_loc, lambda_loc, first_pass, timer, &
                         nkrank, global_k, error, comm)
         if (allocated(error)) return
@@ -690,7 +690,7 @@ contains
 
         ! calculate the new centers and spread
         call wann_omega(csheet, sheet, rave, r2ave, rave2, wann_spread, num_wann, kmesh_info, &
-                        num_kpts, print_output, wann_control%mv_functional ,wann_control%constrain, & 
+                        num_kpts, print_output, wann_control%use_ss_functional, wann_control%constrain, &
                         omega%invariant, ln_tmp_loc, m_matrix_loc, lambda_loc, first_pass, timer, &
                         nkrank, global_k, error, comm)
         if (allocated(error)) return
@@ -884,7 +884,7 @@ contains
 
     if (wann_control%guiding_centres%enable) then
       call wann_phases(csheet, sheet, rguide, irguide, num_wann, kmesh_info, num_kpts, &
-                       wann_control%mv_functional, m_matrix_loc, rnkb, print_output%timing_level, &
+                       wann_control%use_ss_functional, m_matrix_loc, rnkb, print_output%timing_level, &
                        print_output%iprint, timer, nkrank, global_k, error, comm)
       if (allocated(error)) return
     endif
@@ -1756,7 +1756,7 @@ contains
 
   !================================================!
 
-  subroutine wann_phases(csheet, sheet, rguide, irguide, num_wann, kmesh_info, num_kpts, mv_functional, &
+  subroutine wann_phases(csheet, sheet, rguide, irguide, num_wann, kmesh_info, num_kpts, use_ss_functional, &
                          m_matrix_loc, rnkb, timing_level, iprint, timer, nkrank, global_k, error, &
                          comm, m_w)
     !================================================!
@@ -1765,7 +1765,7 @@ contains
     !
     !================================================
 
-    use w90_constants, only: eps6, cmplx_0, cmplx_i
+    use w90_constants, only: eps6, cmplx_0, cmplx_i, twopi
     use w90_io, only: io_stopwatch_start, io_stopwatch_stop
     use w90_utility, only: utility_inv3
     use w90_comms, only: comms_allreduce, w90_comm_type, mpirank
@@ -1794,7 +1794,7 @@ contains
 
     complex(kind=dp), intent(out) :: csheet(:, :, :) !! Choice of phase
     complex(kind=dp), intent(in) :: m_matrix_loc(:, :, :, :)
-    logical, intent(in) :: mv_functional
+    logical, intent(in) :: use_ss_functional
 
     !local
     complex(kind=dp) :: csum(kmesh_info%nnh)
@@ -1928,24 +1928,32 @@ contains
 
     !     obtain branch cut choice guided by rguid
     sheet = 0.0_dp
-    do nkp = 1, num_kpts
+    if (use_ss_functional) then
       do nn = 1, kmesh_info%nntot
         do loop_wann = 1, num_wann
           ! sheet (loop_wann, nn, nkp) = 0.d0
           do j = 1, 3
-            if (.NOT. mv_functional) then
-              sheet(loop_wann, nn, 1) = sheet(loop_wann, nn, 1) &
-                                        + kmesh_info%bk(j, nn, nkp)*rguide(j, loop_wann)
-            else
-              sheet(loop_wann, nn, nkp) = sheet(loop_wann, nn, nkp) &
-                                        + kmesh_info%bk(j, nn, nkp)*rguide(j, loop_wann)
-            endif
+            sheet(loop_wann, nn, 1) = kmesh_info%bk(j, nn, 1)*rguide(j, loop_wann)
           enddo
           ! csheet (loop_wann, nn, nkp) = exp (ci * sheet (loop_wann, nn, nkp) )
         enddo
       enddo
-    enddo
-    csheet = exp(cmplx_i*sheet)
+      csheet = exp(cmplx_i*sheet)
+    else
+      do nkp = 1, num_kpts
+        do nn = 1, kmesh_info%nntot
+          do loop_wann = 1, num_wann
+            ! sheet (loop_wann, nn, nkp) = 0.d0
+            do j = 1, 3
+              sheet(loop_wann, nn, nkp) = sheet(loop_wann, nn, nkp) &
+                                          + kmesh_info%bk(j, nn, nkp)*rguide(j, loop_wann)
+            enddo
+            ! csheet (loop_wann, nn, nkp) = exp (ci * sheet (loop_wann, nn, nkp) )
+          enddo
+        enddo
+      enddo
+      csheet = exp(cmplx_i*sheet)
+    endif
 
     ! now check that we picked the proper sheet for the log
     ! of m_matrix. criterion: q_n^{k,b}=Im(ln(M_nn^{k,b})) + b \cdot r_n are
@@ -1986,7 +1994,7 @@ contains
 
   !================================================!
   subroutine wann_omega(csheet, sheet, rave, r2ave, rave2, wann_spread, num_wann, kmesh_info, &
-                        num_kpts, print_output, mv_functional, wann_slwf, omega_invariant, ln_tmp_loc, &
+                        num_kpts, print_output, use_ss_functional, wann_slwf, omega_invariant, ln_tmp_loc, &
                         m_matrix_loc, lambda_loc, first_pass, timer, nkrank, global_k, error, comm)
     !================================================!
     !
@@ -2022,7 +2030,7 @@ contains
 
     real(kind=dp), intent(in) :: lambda_loc
     real(kind=dp), intent(in) :: omega_invariant
-    logical, intent(in) :: mv_functional
+    logical, intent(in) :: use_ss_functional
     real(kind=dp), intent(inout) :: ln_tmp_loc(:, :, :)
     real(kind=dp), intent(in)  :: sheet(:, :, :)
     real(kind=dp), intent(out) :: r2ave(:)
@@ -2044,20 +2052,20 @@ contains
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) call io_stopwatch_start('wann: omega', timer)
 
-    if (.NOT. mv_functional) then
+    if (use_ss_functional) then
       allocate (sum_mnn(num_wann, kmesh_info%nntot), stat=ierr)
       if (ierr /= 0) then
         call set_error_alloc(error, 'Error in allocating sum_mnn in wann_omega', comm)
         return
       endif
-      
+
       sum_mnn = 0.0_dp
       do nn = 1, kmesh_info%nntot
         do n = 1, num_wann
           do nkp_loc = 1, nkrank
             nkp = global_k(nkp_loc)
             ! Note that this ln_tmp is defined differently wrt the one in wann_domega
-            sum_mnn(n, nn) = sum_mnn(n, nn) + csheet(n, nn, 1) * m_matrix_loc(n, n, nn, nkp_loc)
+            sum_mnn(n, nn) = sum_mnn(n, nn) + csheet(n, nn, 1)*m_matrix_loc(n, n, nn, nkp_loc)
           enddo
         enddo
       enddo
@@ -2065,10 +2073,10 @@ contains
       call comms_allreduce(sum_mnn(1, 1), num_wann*kmesh_info%nntot, 'SUM', error, comm)
       if (allocated(error)) return
 
-      sum_mnn = sum_mnn / real(num_kpts, dp)
-      
+      sum_mnn = sum_mnn/real(num_kpts, dp)
+
       do nkp_loc = 1, nkrank
-          ln_tmp_loc(:, :, nkp_loc) = aimag(log(sum_mnn(:, :))) - sheet(:, :, 1)
+        ln_tmp_loc(:, :, nkp_loc) = aimag(log(sum_mnn(:, :))) - sheet(:, :, 1)
       enddo
 
       rave = 0.0_dp
@@ -2087,13 +2095,13 @@ contains
       call comms_allreduce(rave(1, 1), 3*num_wann, 'SUM', error, comm)
       if (allocated(error)) return
 
-      rave = -rave / real(num_kpts, dp)
+      rave = -rave/real(num_kpts, dp)
 
       rave2 = 0.0_dp
       do iw = 1, num_wann
         rave2(iw) = sum(rave(:, iw)*rave(:, iw))
       enddo
-      
+
       r2ave = 0.0_dp
       do nn = 1, kmesh_info%nntot
         r2ave(:) = r2ave(:) + kmesh_info%wb(nn)*(1.0_dp - abs(sum_mnn(:, nn))**2)
@@ -2106,7 +2114,7 @@ contains
         call set_error_dealloc(error, 'Error in deallocating sum_mnn in wann_omega', comm)
         return
       endif
-    else 
+    else
       do nkp_loc = 1, nkrank
         nkp = global_k(nkp_loc)
         do nn = 1, kmesh_info%nntot
@@ -2117,7 +2125,7 @@ contains
           enddo
         enddo
       enddo
-      
+
       rave = 0.0_dp
       do iw = 1, num_wann
         do ind = 1, 3
@@ -2141,7 +2149,7 @@ contains
         rave2(iw) = sum(rave(:, iw)*rave(:, iw))
       enddo
 
-    ! aam: is this useful?
+      ! aam: is this useful?
 !~    rtot=0.0_dp
 !~    do ind = 1, 3
 !~       do loop_wann = 1, num_wann
@@ -2154,7 +2162,7 @@ contains
         do nkp_loc = 1, nkrank
           do nn = 1, kmesh_info%nntot
             mnn2 = real(m_matrix_loc(iw, iw, nn, nkp_loc) &
-                      *conjg(m_matrix_loc(iw, iw, nn, nkp_loc)), kind=dp)
+                        *conjg(m_matrix_loc(iw, iw, nn, nkp_loc)), kind=dp)
             r2ave(iw) = r2ave(iw) + kmesh_info%wb(nn)*(1.0_dp - mnn2 + ln_tmp_loc(iw, nn, nkp_loc)**2)
           enddo
         enddo
@@ -2334,7 +2342,7 @@ contains
 
       wann_spread%om_od = wann_spread%om_od/real(num_kpts, dp)
 
-      if (.NOT. mv_functional) then
+      if (use_ss_functional) then
         wann_spread%om_d = 0.0_dp
         do nn = 1, kmesh_info%nntot
           do n = 1, num_wann
@@ -2346,7 +2354,7 @@ contains
 
             call comms_allreduce(summ, 1, 'SUM', error, comm)
             if (allocated(error)) return
-            summ = summ / real(num_kpts, dp)
+            summ = summ/real(num_kpts, dp)
 
             wann_spread%om_d = wann_spread%om_d - kmesh_info%wb(nn)*abs(summ)**2
 
@@ -2358,7 +2366,7 @@ contains
 
             call comms_allreduce(summ, 1, 'SUM', error, comm)
             if (allocated(error)) return
-            summ = summ / real(num_kpts, dp)
+            summ = summ/real(num_kpts, dp)
 
             wann_spread%om_d = wann_spread%om_d + kmesh_info%wb(nn)*summ
           enddo
@@ -2375,10 +2383,10 @@ contains
             enddo
           enddo
         enddo
-  
+
         call comms_allreduce(wann_spread%om_d, 1, 'SUM', error, comm)
         if (allocated(error)) return
-  
+
         wann_spread%om_d = wann_spread%om_d/real(num_kpts, dp)
       endif
 
@@ -2392,7 +2400,7 @@ contains
   end subroutine wann_omega
 
   !================================================!
-  subroutine wann_domega(dist_k, csheet, sheet, rave, num_wann, kmesh_info, num_kpts, wann_slwf, mv_functional, &
+  subroutine wann_domega(dist_k, csheet, sheet, rave, num_wann, kmesh_info, num_kpts, wann_slwf, use_ss_functional, &
                          lsitesymmetry, ln_tmp_loc, m_matrix_loc, rnkb_loc, cdodq_loc, &
                          lambda_loc, timing_level, sitesym, timer, nkrank, global_k, error, comm, &
                          iprint, cdodq)
@@ -2428,7 +2436,7 @@ contains
     integer, intent(in) :: timing_level, iprint
     integer, intent(in) :: nkrank
     integer, intent(in) :: global_k(:)
-    logical, intent(in) :: mv_functional
+    logical, intent(in) :: use_ss_functional
 
     real(kind=dp), intent(in)  :: sheet(:, :, :)
     real(kind=dp), intent(out) :: rave(:, :)
@@ -2484,7 +2492,7 @@ contains
       endif
     end if
 
-    if (.NOT. mv_functional) then
+    if (use_ss_functional) then
       allocate (sum_mnn(num_wann, kmesh_info%nntot), stat=ierr)
       if (ierr /= 0) then
         call set_error_alloc(error, 'Error in allocating sum_mnn in wann_omega', comm)
@@ -2497,7 +2505,7 @@ contains
           do nkp_loc = 1, nkrank
             nkp = global_k(nkp_loc)
             ! Note that this ln_tmp is defined differently wrt the one in wann_domega
-            sum_mnn(n, nn) = sum_mnn(n, nn) + csheet(n, nn, 1) * m_matrix_loc(n, n, nn, nkp_loc)
+            sum_mnn(n, nn) = sum_mnn(n, nn) + csheet(n, nn, 1)*m_matrix_loc(n, n, nn, nkp_loc)
           enddo
         enddo
       enddo
@@ -2505,10 +2513,10 @@ contains
       call comms_allreduce(sum_mnn(1, 1), num_wann*kmesh_info%nntot, 'SUM', error, comm)
       if (allocated(error)) return
 
-      sum_mnn = sum_mnn / real(num_kpts, dp)
+      sum_mnn = sum_mnn/real(num_kpts, dp)
 
       do nkp_loc = 1, nkrank
-        ln_tmp_loc(:, :, nkp_loc) = kmesh_info%wb(nn)*(aimag(log(sum_mnn(:, :))) - sheet(:, :, 1))   
+        ln_tmp_loc(:, :, nkp_loc) = kmesh_info%wb(nn)*(aimag(log(sum_mnn(:, :))) - sheet(:, :, 1))
       enddo
 
       rave = 0.0_dp
@@ -2517,7 +2525,7 @@ contains
           do nkp_loc = 1, nkrank
             nkp = global_k(nkp_loc)
             do nn = 1, kmesh_info%nntot
-              rave(ind, iw) = rave(ind, iw) + kmesh_info%bk(ind, nn, nkp) * ln_tmp_loc(iw, nn, nkp_loc)
+              rave(ind, iw) = rave(ind, iw) + kmesh_info%bk(ind, nn, nkp)*ln_tmp_loc(iw, nn, nkp_loc)
             enddo
           enddo
         enddo
@@ -2538,31 +2546,45 @@ contains
         enddo
       enddo
 
+      sum_mnn = 0.0_dp
+      do n = 1, num_wann
+        do nn = 1, kmesh_info%nntot
+          do nkp_loc = 1, nkrank
+            nkp = global_k(nkp_loc)
+            ! Note that this ln_tmp is defined differently wrt the one in wann_domega
+            sum_mnn(n, nn) = sum_mnn(n, nn) + m_matrix_loc(n, n, nn, nkp_loc)
+          enddo
+        enddo
+      enddo
+
+      call comms_allreduce(sum_mnn(1, 1), num_wann*kmesh_info%nntot, 'SUM', error, comm)
+      if (allocated(error)) return
+
       cdodq_loc = cmplx_0
       do nkp_loc = 1, nkrank
         do n = 1, num_wann
           do m = 1, num_wann
             do nn = 1, kmesh_info%nntot
-              nn2 = modulo(nn-1+kmesh_info%nntot/2, kmesh_info%nntot)+1
+              nn2 = modulo(nn - 1 + kmesh_info%nntot/2, kmesh_info%nntot) + 1
               cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) + &
-                                      kmesh_info%wb(nn) * m_matrix_loc(m, n, nn, nkp_loc) * &
-                                      conjg(sum_mnn(n, nn))
+                                         kmesh_info%wb(nn)*m_matrix_loc(m, n, nn, nkp_loc)* &
+                                         conjg(sum_mnn(n, nn))
               cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) - &
-                                      kmesh_info%wb(nn) * conjg(m_matrix_loc(n, m, nn2, nkp_loc)) * &
-                                      conjg(sum_mnn(m, nn))
+                                         kmesh_info%wb(nn)*conjg(m_matrix_loc(n, m, nn2, nkp_loc))* &
+                                         conjg(sum_mnn(m, nn))
               cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) - &
-                                      kmesh_info%wb(nn) * conjg(m_matrix_loc(n, m, nn, nkp_loc)) * &
-                                      sum_mnn(m, nn)
+                                         kmesh_info%wb(nn)*conjg(m_matrix_loc(n, m, nn, nkp_loc))* &
+                                         sum_mnn(m, nn)
               cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) + &
-                                      kmesh_info%wb(nn) * m_matrix_loc(m, n, nn2, nkp_loc) * &
-                                      sum_mnn(n, nn)
+                                         kmesh_info%wb(nn)*m_matrix_loc(m, n, nn2, nkp_loc)* &
+                                         sum_mnn(n, nn)
             enddo
           enddo
         enddo
       enddo
 
-      cdodq_loc = cdodq_loc / real(num_kpts, dp)
-      
+      cdodq_loc = cdodq_loc/real(num_kpts, dp)
+
       if (present(cdodq)) then
         ! each process communicates its result to other processes
         cdodq(:, :, :) = 0.0_dp
@@ -2611,7 +2633,7 @@ contains
           do nn = 1, kmesh_info%nntot
             do n = 1, num_wann
               r0kb(n, nn, nkp_loc) = sum(kmesh_info%bk(:, nn, nkp) &
-                                        *wann_slwf%centres(n, :))
+                                         *wann_slwf%centres(n, :))
             enddo
           enddo
         enddo
@@ -2646,72 +2668,72 @@ contains
                   if (n <= wann_slwf%slwf_num) then
                     ! A[R^{k,b}]=(R-Rdag)/2
                     cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) &
-                                              + kmesh_info%wb(nn)*0.5_dp*(cr(m, n) - conjg(cr(n, m)))
+                                               + kmesh_info%wb(nn)*0.5_dp*(cr(m, n) - conjg(cr(n, m)))
                     cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) &
-                                              - (crt(m, n)*ln_tmp_loc(n, nn, nkp_loc) &
+                                               - (crt(m, n)*ln_tmp_loc(n, nn, nkp_loc) &
                                                   + conjg(crt(n, m)*ln_tmp_loc(m, nn, nkp_loc))) &
-                                              *cmplx(0.0_dp, -0.5_dp, kind=dp)
+                                               *cmplx(0.0_dp, -0.5_dp, kind=dp)
                     cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) &
-                                              - (crt(m, n)*rnkb_loc(n, nn, nkp_loc) &
+                                               - (crt(m, n)*rnkb_loc(n, nn, nkp_loc) &
                                                   + conjg(crt(n, m)*rnkb_loc(m, nn, nkp_loc))) &
-                                              *cmplx(0.0_dp, -0.5_dp, kind=dp)
+                                               *cmplx(0.0_dp, -0.5_dp, kind=dp)
                     if (wann_slwf%constrain) then
                       cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) + lambda_loc &
-                                                *(crt(m, n)*ln_tmp_loc(n, nn, nkp_loc) &
-                                                  + conjg(crt(n, m)*ln_tmp_loc(m, nn, nkp_loc))) &
-                                                *cmplx(0.0_dp, -0.5_dp, kind=dp)
+                                                 *(crt(m, n)*ln_tmp_loc(n, nn, nkp_loc) &
+                                                   + conjg(crt(n, m)*ln_tmp_loc(m, nn, nkp_loc))) &
+                                                 *cmplx(0.0_dp, -0.5_dp, kind=dp)
                       cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) &
-                                                + kmesh_info%wb(nn)*lambda_loc &
-                                                *(crt(m, n)*rnkb_loc(n, nn, nkp_loc) &
-                                                  + conjg(crt(n, m)*rnkb_loc(m, nn, nkp_loc))) &
-                                                *cmplx(0.0_dp, -0.5_dp, kind=dp)
+                                                 + kmesh_info%wb(nn)*lambda_loc &
+                                                 *(crt(m, n)*rnkb_loc(n, nn, nkp_loc) &
+                                                   + conjg(crt(n, m)*rnkb_loc(m, nn, nkp_loc))) &
+                                                 *cmplx(0.0_dp, -0.5_dp, kind=dp)
                       cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) - lambda_loc &
-                                                *(crt(m, n)*ln_tmp_loc(n, nn, nkp_loc) &
-                                                  + conjg(crt(n, m))*ln_tmp_loc(m, nn, nkp_loc)) &
-                                                *cmplx(0.0_dp, -0.5_dp, kind=dp)
+                                                 *(crt(m, n)*ln_tmp_loc(n, nn, nkp_loc) &
+                                                   + conjg(crt(n, m))*ln_tmp_loc(m, nn, nkp_loc)) &
+                                                 *cmplx(0.0_dp, -0.5_dp, kind=dp)
                       cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) &
-                                                - kmesh_info%wb(nn)*lambda_loc &
-                                                *(r0kb(n, nn, nkp_loc)*crt(m, n) &
-                                                  + r0kb(m, nn, nkp_loc)*conjg(crt(n, m))) &
-                                                *cmplx(0.0_dp, -0.5_dp, kind=dp)
+                                                 - kmesh_info%wb(nn)*lambda_loc &
+                                                 *(r0kb(n, nn, nkp_loc)*crt(m, n) &
+                                                   + r0kb(m, nn, nkp_loc)*conjg(crt(n, m))) &
+                                                 *cmplx(0.0_dp, -0.5_dp, kind=dp)
                     end if
                   else
                     cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) - kmesh_info%wb(nn) &
-                                              *0.5_dp*conjg(cr(n, m)) &
-                                              - conjg(crt(n, m)*(ln_tmp_loc(m, nn, nkp_loc) &
+                                               *0.5_dp*conjg(cr(n, m)) &
+                                               - conjg(crt(n, m)*(ln_tmp_loc(m, nn, nkp_loc) &
                                                                   + kmesh_info%wb(nn)*rnkb_loc(m, nn, nkp_loc))) &
-                                              *cmplx(0.0_dp, -0.5_dp, kind=dp)
+                                               *cmplx(0.0_dp, -0.5_dp, kind=dp)
                     if (wann_slwf%constrain) then
                       cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) + lambda_loc &
-                                                *conjg(crt(n, m)*(ln_tmp_loc(m, nn, nkp_loc) &
-                                                                  + kmesh_info%wb(nn)*rnkb_loc(m, nn, nkp_loc))) &
-                                                *cmplx(0.0_dp, -0.5_dp, kind=dp) &
-                                                - lambda_loc*(conjg(crt(n, m)) &
-                                                              *ln_tmp_loc(m, nn, nkp_loc)) &
-                                                *cmplx(0.0_dp, -0.5_dp, kind=dp)
+                                                 *conjg(crt(n, m)*(ln_tmp_loc(m, nn, nkp_loc) &
+                                                                   + kmesh_info%wb(nn)*rnkb_loc(m, nn, nkp_loc))) &
+                                                 *cmplx(0.0_dp, -0.5_dp, kind=dp) &
+                                                 - lambda_loc*(conjg(crt(n, m)) &
+                                                               *ln_tmp_loc(m, nn, nkp_loc)) &
+                                                 *cmplx(0.0_dp, -0.5_dp, kind=dp)
                       cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) &
-                                                - kmesh_info%wb(nn)*lambda_loc &
-                                                *r0kb(m, nn, nkp_loc)*conjg(crt(n, m)) &
-                                                *cmplx(0.0_dp, -0.5_dp, kind=dp)
+                                                 - kmesh_info%wb(nn)*lambda_loc &
+                                                 *r0kb(m, nn, nkp_loc)*conjg(crt(n, m)) &
+                                                 *cmplx(0.0_dp, -0.5_dp, kind=dp)
                     end if
                   end if
                 else if (n <= wann_slwf%slwf_num) then
                   cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) &
-                                            + kmesh_info%wb(nn)*cr(m, n)*0.5_dp &
-                                            - crt(m, n)*(ln_tmp_loc(n, nn, nkp_loc) &
+                                             + kmesh_info%wb(nn)*cr(m, n)*0.5_dp &
+                                             - crt(m, n)*(ln_tmp_loc(n, nn, nkp_loc) &
                                                           + kmesh_info%wb(nn)*rnkb_loc(n, nn, nkp_loc)) &
-                                            *cmplx(0.0_dp, -0.5_dp, kind=dp)
+                                             *cmplx(0.0_dp, -0.5_dp, kind=dp)
                   if (wann_slwf%constrain) then
                     cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) + lambda_loc &
-                                              *crt(m, n)*(ln_tmp_loc(n, nn, nkp_loc) &
-                                                          + kmesh_info%wb(nn)*rnkb_loc(n, nn, nkp_loc)) &
-                                              *cmplx(0.0_dp, -0.5_dp, kind=dp) &
-                                              - lambda_loc*crt(m, n)*ln_tmp_loc(n, nn, nkp_loc) &
-                                              *cmplx(0.0_dp, -0.5_dp, kind=dp)
+                                               *crt(m, n)*(ln_tmp_loc(n, nn, nkp_loc) &
+                                                           + kmesh_info%wb(nn)*rnkb_loc(n, nn, nkp_loc)) &
+                                               *cmplx(0.0_dp, -0.5_dp, kind=dp) &
+                                               - lambda_loc*crt(m, n)*ln_tmp_loc(n, nn, nkp_loc) &
+                                               *cmplx(0.0_dp, -0.5_dp, kind=dp)
                     cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) - kmesh_info%wb(nn) &
-                                              *lambda_loc &
-                                              *r0kb(n, nn, nkp_loc)*crt(m, n) &
-                                              *cmplx(0.0_dp, -0.5_dp, kind=dp)
+                                               *lambda_loc &
+                                               *r0kb(n, nn, nkp_loc)*crt(m, n) &
+                                               *cmplx(0.0_dp, -0.5_dp, kind=dp)
                   end if
                 else
                   cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc)
@@ -2723,17 +2745,17 @@ contains
               do m = 1, num_wann
                 ! A[R^{k,b}]=(R-Rdag)/2
                 cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) &
-                                          + kmesh_info%wb(nn)*0.5_dp &
-                                          *(cr(m, n) - conjg(cr(n, m)))
+                                           + kmesh_info%wb(nn)*0.5_dp &
+                                           *(cr(m, n) - conjg(cr(n, m)))
                 ! -S[T^{k,b}]=-(T+Tdag)/2i ; T_mn = Rt_mn q_n
                 cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) - &
-                                          (crt(m, n)*ln_tmp_loc(n, nn, nkp_loc) &
+                                           (crt(m, n)*ln_tmp_loc(n, nn, nkp_loc) &
                                             + conjg(crt(n, m)*ln_tmp_loc(m, nn, nkp_loc))) &
-                                          *cmplx(0.0_dp, -0.5_dp, kind=dp)
+                                           *cmplx(0.0_dp, -0.5_dp, kind=dp)
                 cdodq_loc(m, n, nkp_loc) = cdodq_loc(m, n, nkp_loc) - kmesh_info%wb(nn) &
-                                          *(crt(m, n)*rnkb_loc(n, nn, nkp_loc) &
-                                            + conjg(crt(n, m)*rnkb_loc(m, nn, nkp_loc))) &
-                                          *cmplx(0.0_dp, -0.5_dp, kind=dp)
+                                           *(crt(m, n)*rnkb_loc(n, nn, nkp_loc) &
+                                             + conjg(crt(n, m)*rnkb_loc(m, nn, nkp_loc))) &
+                                           *cmplx(0.0_dp, -0.5_dp, kind=dp)
               enddo
             enddo
           endif
@@ -3083,7 +3105,7 @@ contains
     irguide = 0
     if (wann_control%guiding_centres%enable .and. (wann_control%guiding_centres%num_no_guide_iter .le. 0)) then
       call wann_phases(csheet, sheet, rguide, irguide, num_wann, kmesh_info, num_kpts, &
-                       wann_control%mv_functional, m_matrix, rnkb, print_output%timing_level,  &
+                       wann_control%use_ss_functional, m_matrix, rnkb, print_output%timing_level, &
                        print_output%iprint, timer, num_kpts, global_k, error, comm) ! no plellisation so num_kpts_local = num_kpts
       if (allocated(error)) return
       irguide = 1
@@ -3175,7 +3197,7 @@ contains
           (iter .gt. wann_control%guiding_centres%num_no_guide_iter) &
           .and. (mod(iter, wann_control%guiding_centres%num_guide_cycles) .eq. 0)) then
         call wann_phases(csheet, sheet, rguide, irguide, num_wann, kmesh_info, num_kpts, &
-                         wann_control%mv_functional, m_matrix, rnkb, print_output%timing_level, &
+                         wann_control%use_ss_functional, m_matrix, rnkb, print_output%timing_level, &
                          print_output%iprint, timer, num_kpts, global_k, error, comm, m_w) ! num_kpts_loc == num_kpts here
         if (allocated(error)) return
         irguide = 1
@@ -3286,7 +3308,7 @@ contains
 
     if (wann_control%guiding_centres%enable) then
       call wann_phases(csheet, sheet, rguide, irguide, num_wann, kmesh_info, num_kpts, &
-                       wann_control%mv_functional, m_matrix, rnkb, print_output%timing_level,  &
+                       wann_control%use_ss_functional, m_matrix, rnkb, print_output%timing_level, &
                        print_output%iprint, timer, num_kpts, global_k, error, comm) ! num_kpts_loc == num_kpts here
       if (allocated(error)) return
     endif

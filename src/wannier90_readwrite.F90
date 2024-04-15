@@ -713,8 +713,8 @@ contains
                                    l_value=wann_control%guiding_centres%enable)
     if (allocated(error)) return
 
-    call w90_readwrite_get_keyword(settings, 'mv_functional', found, error, comm, &
-                                   l_value=wann_control%mv_functional)
+    call w90_readwrite_get_keyword(settings, 'use_ss_functional', found, error, comm, &
+                                   l_value=wann_control%use_ss_functional)
     if (allocated(error)) return
 
     call w90_readwrite_get_keyword(settings, 'num_guide_cycles', found, error, comm, &
