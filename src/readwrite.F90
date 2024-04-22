@@ -990,6 +990,7 @@ contains
     call w90_readwrite_get_keyword(settings, 'num_shells', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'num_valence_bands', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'num_wann', found, error, comm)
+    call w90_readwrite_get_keyword(settings, 'use_ss_functional', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'one_dim_axis', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'optimisation', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'postproc_setup', found, error, comm)

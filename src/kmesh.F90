@@ -50,6 +50,7 @@ module w90_kmesh
 
   public :: kmesh_dealloc
   public :: kmesh_get
+  public :: kmesh_sort
   public :: kmesh_write
 
   integer, parameter :: nsupcell = 5
@@ -91,7 +92,7 @@ contains
     ! local variables
     real(kind=dp), allocatable :: bvec_tmp(:, :)
     real(kind=dp), allocatable :: kpt_cart(:, :)
-    real(kind=dp) :: bk_local(3, num_nnmax, num_kpts) !, kpbvec(3)
+    real(kind=dp), allocatable :: bk_local(:, :, :)
     real(kind=dp) :: bweight(max_shells)
     real(kind=dp), parameter :: eta = 99999999.0_dp    ! eta = very large
     real(kind=dp) :: dist, dnn0, dnn1, bb1, bbn, ddelta
@@ -103,7 +104,7 @@ contains
     ! higher-order finite-difference
     real(kind=dp) :: bweight(kmesh_input%max_shells_h)
     real(kind=dp) :: wb_local(kmesh_input%num_nnmax_h)
-    real(kind=dp) :: bk_local(3, kmesh_input%num_nnmax_h, num_kpts), bk_latt(3)
+    real(kind=dp) :: bk_latt(3)
     real(kind=dp) :: bkl_norm, bka_norm, bkl_normalized(3), bka_normalized(3), inv_lattice(3, 3)
     real(kind=dp), allocatable :: bk_first(:, :, :)
     integer :: num_x((1 + kmesh_input%finite_diff_order)*(1 + 2*kmesh_input%finite_diff_order))
@@ -115,12 +116,30 @@ contains
     integer, allocatable :: nnlist_tmp(:, :), nncell_tmp(:, :, :) ![ysl]
     integer :: ifound, counter, na, nap, loop_s, loop_b, shell !, nbvec, bnum
     integer :: ifpos, ifneg, ierr, multi(max(kmesh_input%search_shells, 6*kmesh_input%finite_diff_order))
-    integer :: lmn(3, (2*kmesh_input%search_supcell_size + 1)**3) ! Order in which to search the cells (ordered in dist from origin)
+    integer, allocatable :: lmn(:, :) ! Order in which to search the cells (ordered in dist from origin)
     integer :: nlist, nkp, nkp2, l, m, n, ndnn, ndnnx, ndnntot
-    integer :: nnshell(num_kpts, max(kmesh_input%search_shells, 6*kmesh_input%finite_diff_order))
+    integer, allocatable :: nnshell(:, :)
     integer :: nnsh, nn, nnx, loop, i, j
 
     if (print_output%timing_level > 0) call io_stopwatch_start('kmesh: get', timer)
+
+    allocate (bk_local(3, kmesh_input%num_nnmax_h, num_kpts), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating bk_local in kmesh_get', comm)
+      return
+    endif
+
+    allocate (lmn(3, (2*kmesh_input%search_supcell_size + 1)**3), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating lmn in kmesh_get', comm)
+      return
+    endif
+
+    allocate (nnshell(num_kpts, max(kmesh_input%search_shells, 6*kmesh_input%finite_diff_order)), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating nnshell in kmesh_get', comm)
+      return
+    endif
 
     call utility_inverse_mat(recip_lattice, inv_lattice)
     call utility_recip_lattice(real_lattice, recip_lattice, volume, error, comm)
@@ -378,6 +397,14 @@ contains
       return
     endif
 
+    nnx = 0
+    do loop_s = 1, kmesh_input%num_shells
+      do loop_b = 1, multi(kmesh_input%shell_list(loop_s))
+        nnx = nnx + 1
+        wb_local(nnx) = bweight(loop_s)
+      end do
+    end do
+
     ! Now build up the list of nearest-neighbour shells for each k-point.
     ! nnlist(nkp,1...nnx) points to the nnx neighbours (ordered along increa
     ! shells) of the k-point nkp. nncell(i,nkp,nnth) tells us in which BZ is
@@ -391,7 +418,6 @@ contains
       write (stdout, '(1x,a)') '|                        -----   --------------------                        |'
     endif
     !if (index(print_output%devel_flag, 'kmesh_degen') == 0) then
-
     !
     ! Standard routine
     !
@@ -858,11 +884,131 @@ contains
       return
     endif
 
+    deallocate (bk_local, stat=ierr)
+    if (ierr /= 0) then
+      call set_error_dealloc(error, 'Error in deallocating bk_local in kmesh_get', comm)
+      return
+    endif
+
+    deallocate (lmn, stat=ierr)
+    if (ierr /= 0) then
+      call set_error_dealloc(error, 'Error in deallocating lmn in kmesh_get', comm)
+      return
+    endif
+
+    deallocate (nnshell, stat=ierr)
+    if (ierr /= 0) then
+      call set_error_dealloc(error, 'Error in deallocating nnshell in kmesh_get', comm)
+      return
+    endif
+
     if (print_output%timing_level > 0) call io_stopwatch_stop('kmesh: get', timer)
 
     return
 
   end subroutine kmesh_get
+
+  subroutine kmesh_sort(kmesh_info, num_kpts, error, comm)
+    !==================================================================!
+    !                                                                  !
+    !! Sorts b vectors                                                 !
+    !                                                                  !
+    ! Sort the overlaps in the same neighbor b vector order            !
+    ! with b and -b are nntot/2 far apart                              !
+    !                                                                  !
+    !==================================================================!
+
+    use w90_utility, only: utility_compar
+    use w90_types, only: kmesh_info_type
+
+    implicit none
+
+    type(kmesh_info_type), intent(inout) :: kmesh_info
+    integer, intent(in) :: num_kpts
+    type(w90_error_type), allocatable, intent(out) :: error
+    type(w90_comm_type), intent(in) :: comm
+
+    real(kind=dp), allocatable :: wb_tmp(:), bk_tmp(:, :)
+    integer, allocatable :: nnlist_tmp(:), nncell_tmp(:, :)
+    integer :: na, nn, nkp, ifpos, ifneg, ierr
+
+    allocate (wb_tmp(kmesh_info%nntot), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating wb_tmp in kmesh_sort', comm)
+      return
+    endif
+
+    do na = 1, kmesh_info%nnh
+      do nn = 1, kmesh_info%nntot
+        call utility_compar(kmesh_info%bka(1, na), kmesh_info%bk(1, nn, 1), ifpos, ifneg)
+        if (ifpos .eq. 1) then
+          wb_tmp(na) = kmesh_info%wb(nn)
+        else if (ifneg .eq. 1) then
+          wb_tmp(na + kmesh_info%nnh) = kmesh_info%wb(nn)
+        endif
+      enddo
+    enddo
+    kmesh_info%wb(:) = wb_tmp(:)
+
+    deallocate (wb_tmp, stat=ierr)
+    if (ierr /= 0) then
+      call set_error_dealloc(error, 'Error in deallocating wb_tmp in kmesh_sort', comm)
+      return
+    endif
+
+    allocate (nnlist_tmp(kmesh_info%nntot), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating nnlist_tmp in kmesh_sort', comm)
+      return
+    endif
+    allocate (bk_tmp(3, kmesh_info%nntot), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating bk_tmp in kmesh_sort', comm)
+      return
+    endif
+    allocate (nncell_tmp(3, kmesh_info%nntot), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating nncell_tmp in kmesh_sort', comm)
+      return
+    endif
+
+    do nkp = 1, num_kpts
+      do na = 1, kmesh_info%nnh
+        do nn = 1, kmesh_info%nntot
+          call utility_compar(kmesh_info%bka(1, na), kmesh_info%bk(1, nn, nkp), ifpos, ifneg)
+          if (ifpos .eq. 1) then
+            bk_tmp(:, na) = kmesh_info%bk(:, nn, nkp)
+            nnlist_tmp(na) = kmesh_info%nnlist(nkp, nn)
+            nncell_tmp(:, na) = kmesh_info%nncell(:, nkp, nn)
+          else if (ifneg .eq. 1) then
+            bk_tmp(:, na + kmesh_info%nnh) = kmesh_info%bk(:, nn, nkp)
+            nnlist_tmp(na + kmesh_info%nnh) = kmesh_info%nnlist(nkp, nn)
+            nncell_tmp(:, na + kmesh_info%nnh) = kmesh_info%nncell(:, nkp, nn)
+          endif
+        enddo
+      enddo
+      kmesh_info%nnlist(nkp, :) = nnlist_tmp(:)
+      kmesh_info%nncell(:, nkp, :) = nncell_tmp(:, :)
+      kmesh_info%bk(:, :, nkp) = bk_tmp(:, :)
+    enddo
+
+    deallocate (nnlist_tmp, stat=ierr)
+    if (ierr /= 0) then
+      call set_error_dealloc(error, 'Error in deallocating nnlist_tmp in kmesh_sort', comm)
+      return
+    endif
+    deallocate (bk_tmp, stat=ierr)
+    if (ierr /= 0) then
+      call set_error_dealloc(error, 'Error in deallocating bk_tmp in kmesh_sort', comm)
+      return
+    endif
+    deallocate (nncell_tmp, stat=ierr)
+    if (ierr /= 0) then
+      call set_error_dealloc(error, 'Error in deallocating nncell_tmp in kmesh_sort', comm)
+      return
+    endif
+
+  end subroutine kmesh_sort
 
   !================================================!
   subroutine kmesh_write(exclude_bands, kmesh_info, lauto_proj, proj, print_output, kpt_latt, &
