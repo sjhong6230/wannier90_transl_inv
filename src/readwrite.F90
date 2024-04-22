@@ -723,7 +723,7 @@ contains
     kmesh_input%num_nnmax_h = 2*kmesh_input%max_shells_h
 
     call w90_readwrite_get_keyword(settings, 'higher_order_simple', found, error, comm, &
-                                   i_value=kmesh_input%higher_order_simple)
+                                   l_value=kmesh_input%higher_order_simple)
     if (allocated(error)) return
     if (kmesh_input%higher_order_simple) kmesh_input%max_shells_aux = 6
 
@@ -739,7 +739,7 @@ contains
                                         .true., error, comm)
     if (allocated(error)) return
     if (found) then
-      if (kmesh_input%num_shells < 0 .or. kmesh_input%num_shells > max_shells_h) then
+      if (kmesh_input%num_shells < 0 .or. kmesh_input%num_shells > kmesh_input%max_shells_h) then
         call set_error_input(error, 'Error: number of shell in shell_list must be between zero and kmesh_input%max_shells_h', comm)
         return
       endif

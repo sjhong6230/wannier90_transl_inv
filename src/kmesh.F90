@@ -93,7 +93,6 @@ contains
     real(kind=dp), allocatable :: bvec_tmp(:, :)
     real(kind=dp), allocatable :: kpt_cart(:, :)
     real(kind=dp), allocatable :: bk_local(:, :, :)
-    real(kind=dp) :: bweight(max_shells)
     real(kind=dp), parameter :: eta = 99999999.0_dp    ! eta = very large
     real(kind=dp) :: dist, dnn0, dnn1, bb1, bbn, ddelta
     real(kind=dp) :: dnn(max(kmesh_input%search_shells, 6*kmesh_input%finite_diff_order))
@@ -449,10 +448,6 @@ contains
         ! check to see if too few neighbours here
       end do ok
     end do
-    !if (kmesh_input%higher_order_simple) then
-    !  deallocate (bk_first)
-    !  if (ierr /= 0) call io_error('Error deallocating bk_first in kmesh_get', stdout, seedname)
-    !endif
 
     ! higher-order simple algorithm: include 2b, 3b, ..., Nb shells, and modify bweights
     if (kmesh_input%higher_order_simple) then
@@ -509,8 +504,12 @@ contains
                   kmesh_info%nncell(3, nkp, nnx2) = lmn_temp(3)
                 endif
               enddo
-              if (counter == 0) call io_error('Could not find Nb vectors', stdout, seedname)
-              if (counter >= 2) call io_error('Error in kmesh_get, try to modify tolerance in utility_compar', stdout, seedname)
+              if (counter == 0) then
+                call set_error_fatal(error, 'Could not find Nb vectors', comm)
+              endif
+              if (counter >= 2) then
+                call set_error_fatal(error, 'Error in kmesh_get, try to modify tolerance in utility_compar', comm)
+              endif
             enddo
             multi_cumulative = multi_cumulative + multi(ndnn)
           enddo
@@ -1547,11 +1546,11 @@ contains
 
       num_of_eqs = (1 + finite_diff_order_local)*(1 + 2*finite_diff_order_local)
       allocate (num_x(finite_diff_order_local, num_of_eqs), stat=ierr)
-      if (ierr /= 0) call io_error('Error allocating num_x in kmesh_shell_automatic', stdout, seedname)
+      if (ierr /= 0) call set_error_alloc(error, 'Error allocating num_x in kmesh_shell_automatic', comm)
       allocate (num_y(finite_diff_order_local, num_of_eqs), stat=ierr)
-      if (ierr /= 0) call io_error('Error allocating num_y in kmesh_shell_automatic', stdout, seedname)
+      if (ierr /= 0) call set_error_alloc(error, 'Error allocating num_y in kmesh_shell_automatic', comm)
       allocate (num_z(finite_diff_order_local, num_of_eqs), stat=ierr)
-      if (ierr /= 0) call io_error('Error allocating num_z in kmesh_shell_automatic', stdout, seedname)
+      if (ierr /= 0) call set_error_alloc(error, 'Error allocating num_z in kmesh_shell_automatic', comm)
 
       !find higher finite-diff weights
       ! make test suite(compare nnkp files)
@@ -1777,7 +1776,6 @@ contains
     !!  Include more shells to calculate higher-order finite difference: 2b, 3b, ... Nb shells
     !!  Note: some shells are overwritten
     !================================================
-    use w90_io, only: io_error, io_stopwatch
     use w90_types, only: kmesh_input_type, print_output_type
 
     implicit none
