@@ -248,6 +248,11 @@ module w90_postw90_types
     integer, allocatable       :: ndegen(:)
     integer                    :: nrpts
     integer                    :: rpt_origin
+    integer, allocatable       :: ir_ind_ws_to_pw90(:, :, :, :)
+    integer, allocatable       :: irvec_pw90(:, :)
+    real(kind=dp), allocatable :: crvec_pw90(:, :)
+    integer                    :: nrpts_pw90
+    real(kind=dp), allocatable :: wannier_centres_from_AA_R(:, :)
   end type wigner_seitz_type
 
   type kpoint_dist_type ! kpoints from file

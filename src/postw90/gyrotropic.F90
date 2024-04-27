@@ -209,13 +209,13 @@ contains
     call get_HH_R(dis_manifold, kpt_latt, print_output, wigner_seitz, HH_R, u_matrix, v_matrix, &
                   eigval, real_lattice, scissors_shift, num_bands, num_kpts, num_wann, &
                   w90_system%num_valence_bands, effective_model, have_disentangled, seedname, &
-                  stdout, timer, error, comm)
+                  ws_distance, ws_region, stdout, timer, error, comm)
     if (allocated(error)) return
 
     if (eval_D .or. eval_Dw .or. eval_K .or. eval_NOA) then
 
       call get_AA_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, AA_R, HH_R, v_matrix, &
-                    eigval, wigner_seitz%irvec, wigner_seitz%nrpts, num_bands, num_kpts, num_wann, &
+                    eigval, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, num_wann, &
                     effective_model, have_disentangled, seedname, stdout, timer, error, comm)
       if (allocated(error)) return
 
@@ -224,7 +224,7 @@ contains
     if (eval_spn) then
 
       call get_SS_R(dis_manifold, kpt_latt, print_output, pw90_oper_read, SS_R, v_matrix, eigval, &
-                    wigner_seitz%irvec, wigner_seitz%nrpts, num_bands, num_kpts, num_wann, have_disentangled, &
+                    wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, num_wann, have_disentangled, &
                     seedname, stdout, timer, error, comm)
       if (allocated(error)) return
 
@@ -234,12 +234,12 @@ contains
     fermi_n = size(fermi_energy_list)
     if (eval_K) then
       call get_BB_R(dis_manifold, kmesh_info, kpt_latt, print_output, BB_R, v_matrix, eigval, &
-                    scissors_shift, wigner_seitz%irvec, wigner_seitz%nrpts, num_bands, num_kpts, num_wann, &
+                    scissors_shift, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, num_wann, &
                     have_disentangled, seedname, stdout, timer, error, comm)
       if (allocated(error)) return
 
       call get_CC_R(dis_manifold, kmesh_info, kpt_latt, print_output, pw90_oper_read, CC_R, v_matrix, &
-                    eigval, scissors_shift, wigner_seitz%irvec, wigner_seitz%nrpts, num_bands, num_kpts, &
+                    eigval, scissors_shift, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, &
                     num_wann, have_disentangled, seedname, stdout, timer, error, comm)
       if (allocated(error)) return
 

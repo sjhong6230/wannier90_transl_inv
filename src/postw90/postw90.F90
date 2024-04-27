@@ -404,8 +404,9 @@ program postw90
 
   ! Setup a number of common variables for all interpolation tasks
 
-  call pw90common_wanint_setup(num_wann, verbose, real_lattice, mp_grid, effective_model, &
-                               ws_vec, stdout, seedname, timer, error, comm)
+  call pw90common_wanint_setup(num_wann, verbose, real_lattice, mp_grid, ws_region, ws_distance, &
+                               effective_model, ws_vec, wann_data, stdout, seedname, timer, &
+                               error, comm)
   if (allocated(error)) call prterr(error, ierr, stdout, stderr, comm)
 
   if (on_root) then

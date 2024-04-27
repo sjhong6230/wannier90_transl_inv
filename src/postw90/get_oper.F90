@@ -48,7 +48,7 @@ contains
   subroutine get_HH_R(dis_manifold, kpt_latt, print_output, wigner_seitz, HH_R, u_matrix, &
                       v_matrix, eigval, real_lattice, scissors_shift, num_bands, num_kpts, &
                       num_wann, num_valence_bands, effective_model, have_disentangled, seedname, &
-                      stdout, timer, error, comm)
+                      ws_distance, ws_region, stdout, timer, error, comm)
     !================================================
     !
     !! computes <0n|H|Rm>, in eV
@@ -57,8 +57,8 @@ contains
     !================================================
 
     use w90_postw90_types, only: wigner_seitz_type
-    use w90_types, only: dis_manifold_type, print_output_type, timer_list_type
-
+    use w90_types, only: dis_manifold_type, print_output_type, timer_list_type, &
+      ws_distance_type, ws_region_type
     implicit none
 
     ! arguments
@@ -66,6 +66,8 @@ contains
     type(print_output_type), intent(in) :: print_output
     type(w90_comm_type), intent(in) :: comm
     type(wigner_seitz_type), intent(inout) :: wigner_seitz
+    type(ws_distance_type), intent(in) :: ws_distance
+    type(ws_region_type), intent(in) :: ws_region
     type(timer_list_type), intent(inout) :: timer
     type(w90_error_type), allocatable, intent(out) :: error
 
@@ -77,6 +79,7 @@ contains
 
     complex(kind=dp), intent(in) :: u_matrix(:, :, :), v_matrix(:, :, :)
     complex(kind=dp), allocatable, intent(inout) :: HH_R(:, :, :) !  <0n|r|Rm>
+    complex(kind=dp), allocatable :: HH_R_temp(:, :, :)
 
     character(len=50), intent(in) :: seedname
 
@@ -100,8 +103,10 @@ contains
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_start('get_oper: get_HH_R', timer)
 
+    allocate (HH_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
+
     if (.not. allocated(HH_R)) then
-      allocate (HH_R(num_wann, num_wann, wigner_seitz%nrpts))
+      allocate (HH_R(num_wann, num_wann, wigner_seitz%nrpts_pw90))
     else
       if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
         call io_stopwatch_stop('get_oper: get_HH_R', timer)
@@ -112,6 +117,7 @@ contains
     !
     if (effective_model) then
       HH_R = cmplx_0
+      HH_R_temp = cmplx_0
       if (on_root) then
         write (stdout, '(/a)') ' Reading real-space Hamiltonian from file ' &
           //trim(seedname)//'_HH_R.dat'
@@ -148,7 +154,7 @@ contains
           ! of a simple equality. (This has to do with the way the
           ! Berlijn effective Hamiltonian algorithm is
           ! implemented.)
-          HH_R(j, i, ir) = HH_R(j, i, ir) + cmplx(rdum_real, rdum_imag, kind=dp)
+          HH_R_temp(j, i, ir) = HH_R_temp(j, i, ir) + cmplx(rdum_real, rdum_imag, kind=dp)
           if (new_ir) then
             wigner_seitz%irvec(:, ir) = ivdum(:)
             if (ivdum(1) == 0 .and. ivdum(2) == 0 .and. ivdum(3) == 0) wigner_seitz%rpt_origin = ir
@@ -166,10 +172,14 @@ contains
         end do
         wigner_seitz%ndegen(:) = 1 ! This is assumed when reading HH_R from file
         !
+        wigner_seitz%nrpts_pw90 = wigner_seitz%nrpts
+        wigner_seitz%irvec_pw90 = wigner_seitz%irvec
+        wigner_seitz%crvec_pw90 = wigner_seitz%crvec
+        !
         ! TODO: Implement scissors in this case? Need to choose a
         ! uniform k-mesh (the scissors correction is applied in
         ! k-space) and then proceed as below, Fourier transforming
-        ! back to real space and adding to HH_R, Hopefully the
+        ! back to real space and adding to HH_R_temp, Hopefully the
         ! result converges (rapidly) with the k-mesh density, but
         ! one should check
         !
@@ -179,7 +189,7 @@ contains
           return
         endif
       endif
-      call comms_bcast(HH_R(1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts, error, comm)
+      call comms_bcast(HH_R_temp(1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts, error, comm)
       if (allocated(error)) return
       call comms_bcast(wigner_seitz%ndegen(1), wigner_seitz%nrpts, error, comm)
       if (allocated(error)) return
@@ -222,7 +232,7 @@ contains
       enddo
     enddo
 
-    call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, HH_q, HH_R)
+    call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, HH_q, HH_R_temp)
 
     ! Scissors correction for an insulator: shift conduction bands upwards by
     ! scissors_shift eV
@@ -249,8 +259,11 @@ contains
         sciss_R(n, n, wigner_seitz%rpt_origin) = sciss_R(n, n, wigner_seitz%rpt_origin) + 1.0_dp
       end do
       sciss_R = sciss_R*scissors_shift
-      HH_R = HH_R + sciss_R
+      HH_R_temp = HH_R_temp + sciss_R
     endif
+
+    ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
+    call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, HH_R_temp, HH_R)
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_stop('get_oper: get_HH_R', timer)
@@ -264,8 +277,8 @@ contains
 
   !================================================
   subroutine get_AA_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, AA_R, HH_R, &
-                      v_matrix, eigval, irvec, nrpts, num_bands, num_kpts, num_wann, &
-                      effective_model, have_disentangled, seedname, stdout, timer, error, comm)
+                      v_matrix, eigval, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, &
+                      num_wann, effective_model, have_disentangled, seedname, stdout, timer, error, comm)
     !================================================
     !
     !! AA_a(R) = <0|r_a|R> is the Fourier transform
@@ -274,8 +287,10 @@ contains
     !
     !================================================
 
-    use w90_postw90_types, only: pw90_berry_mod_type, pw90_oper_read_type, pw90_spin_hall_type
-    use w90_types, only: dis_manifold_type, kmesh_info_type, print_output_type, timer_list_type
+    use w90_postw90_types, only: pw90_berry_mod_type, pw90_oper_read_type, pw90_spin_hall_type, &
+      wigner_seitz_type
+    use w90_types, only: dis_manifold_type, kmesh_info_type, print_output_type, timer_list_type, &
+      ws_distance_type, ws_region_type
 
     implicit none
 
@@ -283,12 +298,15 @@ contains
     type(pw90_berry_mod_type), intent(in) :: pw90_berry
     type(dis_manifold_type), intent(in)   :: dis_manifold
     type(kmesh_info_type), intent(in)     :: kmesh_info
+    type(wigner_seitz_type), intent(inout) :: wigner_seitz
+    type(ws_distance_type), intent(in) :: ws_distance
+    type(ws_region_type), intent(in) :: ws_region
     type(print_output_type), intent(in)   :: print_output
     type(timer_list_type), intent(inout) :: timer
     type(w90_comm_type), intent(in)         :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    integer, intent(in) :: num_bands, num_kpts, num_wann, nrpts, stdout, irvec(:, :)
+    integer, intent(in) :: num_bands, num_kpts, num_wann, stdout
 
     real(kind=dp), intent(in) :: eigval(:, :)
     real(kind=dp), intent(in) :: kpt_latt(:, :)
@@ -296,6 +314,7 @@ contains
     complex(kind=dp), intent(in) :: v_matrix(:, :, :)
     complex(kind=dp), allocatable, intent(inout) :: HH_R(:, :, :) !  <0n|r|Rm>
     complex(kind=dp), allocatable, intent(inout) :: AA_R(:, :, :, :) ! <0n|r|Rm>
+    complex(kind=dp), allocatable :: AA_R_temp(:, :, :, :)
 
     logical, intent(in) :: have_disentangled
     logical, intent(in) :: effective_model
@@ -323,8 +342,13 @@ contains
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_start('get_oper: get_AA_R', timer)
 
+    allocate (AA_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3))
+    if (.not. allocated(wigner_seitz%wannier_centres_from_AA_R)) then
+      allocate (wigner_seitz%wannier_centres_from_AA_R(3, num_wann))
+    endif
+
     if (.not. allocated(AA_R)) then
-      allocate (AA_R(num_wann, num_wann, nrpts, 3))
+      allocate (AA_R(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3))
     else
       if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
         call io_stopwatch_stop('get_oper: get_AA_R', timer)
@@ -363,22 +387,22 @@ contains
                 ivdum(3) /= ivdum_old(3)) ir = ir + 1
           endif
           ivdum_old = ivdum
-          AA_R(j, i, ir, 1) = AA_R(j, i, ir, 1) + cmplx(rdum1_real, rdum1_imag, kind=dp)
-          AA_R(j, i, ir, 2) = AA_R(j, i, ir, 2) + cmplx(rdum2_real, rdum2_imag, kind=dp)
-          AA_R(j, i, ir, 3) = AA_R(j, i, ir, 3) + cmplx(rdum3_real, rdum3_imag, kind=dp)
+          AA_R_temp(j, i, ir, 1) = AA_R_temp(j, i, ir, 1) + cmplx(rdum1_real, rdum1_imag, kind=dp)
+          AA_R_temp(j, i, ir, 2) = AA_R_temp(j, i, ir, 2) + cmplx(rdum2_real, rdum2_imag, kind=dp)
+          AA_R_temp(j, i, ir, 3) = AA_R_temp(j, i, ir, 3) + cmplx(rdum3_real, rdum3_imag, kind=dp)
           n = n + 1
         enddo
         close (file_unit)
         ! AA_R may not contain the same number of R-vectors as HH_R
         ! (e.g., if a diagonal representation of the position matrix
         ! elements is used, but it cannot be larger
-        if (ir > nrpts) then
-          write (stdout, *) 'ir=', ir, '  nrpts=', nrpts
+        if (ir > wigner_seitz%nrpts) then
+          write (stdout, *) 'ir=', ir, '  nrpts=', wigner_seitz%nrpts
           call set_error_fatal(error, 'Error in get_AA_R: inconsistent nrpts values', comm)
           return
         endif
       endif
-      call comms_bcast(AA_R(1, 1, 1, 1), num_wann*num_wann*nrpts*3, error, comm)
+      call comms_bcast(AA_R_temp(1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts*3, error, comm)
       if (allocated(error)) return
       if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
         call io_stopwatch_stop('get_oper: get_AA_R', timer)
@@ -530,18 +554,39 @@ contains
 
       close (mmn_in)
 
-      call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, AA_q(:, :, :, 1), AA_R(:, :, :, 1))
-      call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, AA_q(:, :, :, 2), AA_R(:, :, :, 2))
-      call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, AA_q(:, :, :, 3), AA_R(:, :, :, 3))
+      call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, AA_q(:, :, :, 1), AA_R_temp(:, :, :, 1))
+      call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, AA_q(:, :, :, 2), AA_R_temp(:, :, :, 2))
+      call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, AA_q(:, :, :, 3), AA_R_temp(:, :, :, 3))
+
+      ! save the wannier centers (diagonals of AA_R_temp) to wannier_centres_from_AA_R
+      ! used in pw90common_fourier_R_to_k_new_second_d_TB_conv
+      wigner_seitz%wannier_centres_from_AA_R(:, :) = 0.d0
+      do j = 1, num_wann
+        do ir = 1, wigner_seitz%nrpts
+          if ((wigner_seitz%irvec(1, ir) .eq. 0) .and. (wigner_seitz%irvec(2, ir) .eq. 0) &
+              .and. (wigner_seitz%irvec(3, ir) .eq. 0)) then
+            wigner_seitz%wannier_centres_from_AA_R(1, j) = real(AA_R_temp(j, j, ir, 1))
+            wigner_seitz%wannier_centres_from_AA_R(2, j) = real(AA_R_temp(j, j, ir, 2))
+            wigner_seitz%wannier_centres_from_AA_R(3, j) = real(AA_R_temp(j, j, ir, 3))
+          endif
+        enddo
+      enddo
+
+      ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
+      do idir = 1, 3
+        call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, AA_R_temp(:, :, :, idir), AA_R(:, :, :, idir))
+      enddo
 
     endif !on_root
 
-    call comms_bcast(AA_R(1, 1, 1, 1), num_wann*num_wann*nrpts*3, error, comm)
+    call comms_bcast(AA_R(1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3, error, comm)
     if (allocated(error)) return
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_stop('get_oper: get_AA_R', timer)
     return
+
+    deallocate (AA_R_temp)
 
 101 call set_error_file(error, 'Error: Problem opening input file '//trim(seedname)//'.mmn', comm)
     return
@@ -554,7 +599,7 @@ contains
 
   !================================================
   subroutine get_BB_R(dis_manifold, kmesh_info, kpt_latt, print_output, BB_R, v_matrix, eigval, &
-                      scissors_shift, irvec, nrpts, num_bands, num_kpts, num_wann, &
+                      scissors_shift, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, num_wann, &
                       have_disentangled, seedname, stdout, timer, error, comm)
     !================================================
     !
@@ -562,20 +607,24 @@ contains
     !! BB_a(k) = i<u|H|del_a u> (a=x,y,z)
     !
     !================================================
-
-    use w90_types, only: dis_manifold_type, kmesh_info_type, print_output_type, timer_list_type
+    use w90_postw90_types, only: wigner_seitz_type
+    use w90_types, only: dis_manifold_type, kmesh_info_type, ws_distance_type, ws_region_type, &
+      print_output_type, timer_list_type
 
     implicit none
 
     ! arguments
     type(dis_manifold_type), intent(in) :: dis_manifold
     type(kmesh_info_type), intent(in)   :: kmesh_info
+    type(wigner_seitz_type), intent(in) :: wigner_seitz
+    type(ws_distance_type), intent(in) :: ws_distance
+    type(ws_region_type), intent(in) :: ws_region
     type(print_output_type), intent(in) :: print_output
     type(timer_list_type), intent(inout) :: timer
     type(w90_comm_type), intent(in)       :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    integer, intent(in) :: num_bands, num_kpts, num_wann, nrpts, stdout, irvec(:, :)
+    integer, intent(in) :: num_bands, num_kpts, num_wann, stdout
 
     real(kind=dp), intent(in) :: eigval(:, :)
     real(kind=dp), intent(in) :: scissors_shift
@@ -583,6 +632,7 @@ contains
 
     complex(kind=dp), intent(in) :: v_matrix(:, :, :)
     complex(kind=dp), allocatable, intent(inout) :: BB_R(:, :, :, :) ! <0|H(r-R)|R>
+    complex(kind=dp), allocatable :: BB_R_temp(:, :, :, :)
 
     logical, intent(in) :: have_disentangled
     character(len=50), intent(in) :: seedname
@@ -605,10 +655,12 @@ contains
 
     if (mpirank(comm) == 0) on_root = .true.
 
+    allocate (BB_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3))
+
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_start('get_oper: get_BB_R', timer)
     if (.not. allocated(BB_R)) then
-      allocate (BB_R(num_wann, num_wann, nrpts, 3))
+      allocate (BB_R(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3))
     else
       if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
         call io_stopwatch_stop('get_oper: get_BB_R', timer)
@@ -713,18 +765,24 @@ contains
 
       close (mmn_in)
 
-      call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, BB_q(:, :, :, 1), BB_R(:, :, :, 1))
-      call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, BB_q(:, :, :, 2), BB_R(:, :, :, 2))
-      call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, BB_q(:, :, :, 3), BB_R(:, :, :, 3))
+      call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, BB_q(:, :, :, 1), BB_R_temp(:, :, :, 1))
+      call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, BB_q(:, :, :, 2), BB_R_temp(:, :, :, 2))
+      call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, BB_q(:, :, :, 3), BB_R_temp(:, :, :, 3))
 
+      ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
+      do idir = 1, 3
+        call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, BB_R_temp(:, :, :, idir), BB_R(:, :, :, idir))
+      enddo
     endif !on_root
 
-    call comms_bcast(BB_R(1, 1, 1, 1), num_wann*num_wann*nrpts*3, error, comm)
+    call comms_bcast(BB_R(1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3, error, comm)
     if (allocated(error)) return
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_stop('get_oper: get_BB_R', timer)
     return
+
+    deallocate (BB_R_temp)
 
 103 call set_error_file(error, 'Error: Problem opening input file '//trim(seedname)//'.mmn', comm)
     return
@@ -735,8 +793,8 @@ contains
 
   !================================================
   subroutine get_CC_R(dis_manifold, kmesh_info, kpt_latt, print_output, pw90_oper_read, CC_R, &
-                      v_matrix, eigval, scissors_shift, irvec, nrpts, num_bands, num_kpts, &
-                      num_wann, have_disentangled, seedname, stdout, timer, error, comm)
+                      v_matrix, eigval, scissors_shift, wigner_seitz, ws_distance, ws_region, &
+                      num_bands, num_kpts, num_wann, have_disentangled, seedname, stdout, timer, error, comm)
     !================================================
     !
     !! CC_ab(R) = <0|r_a.H.(r-R)_b|R> is the Fourier transform of
@@ -744,8 +802,9 @@ contains
     !
     !================================================
 
-    use w90_postw90_types, only: pw90_oper_read_type
-    use w90_types, only: dis_manifold_type, kmesh_info_type, print_output_type, timer_list_type
+    use w90_postw90_types, only: pw90_oper_read_type, wigner_seitz_type
+    use w90_types, only: dis_manifold_type, kmesh_info_type, ws_distance_type, ws_region_type, &
+      print_output_type, timer_list_type
 
     implicit none
 
@@ -753,12 +812,15 @@ contains
     type(dis_manifold_type), intent(in)   :: dis_manifold
     type(kmesh_info_type), intent(in)     :: kmesh_info
     type(pw90_oper_read_type), intent(in) :: pw90_oper_read
+    type(wigner_seitz_type), intent(in) :: wigner_seitz
+    type(ws_distance_type), intent(in) :: ws_distance
+    type(ws_region_type), intent(in) :: ws_region
     type(print_output_type), intent(in)   :: print_output
     type(timer_list_type), intent(inout)  :: timer
     type(w90_comm_type), intent(in)        :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    integer, intent(in) :: num_bands, num_kpts, num_wann, nrpts, stdout, irvec(:, :)
+    integer, intent(in) :: num_bands, num_kpts, num_wann, stdout
 
     real(kind=dp), intent(in) :: eigval(:, :)
     real(kind=dp), intent(in) :: scissors_shift
@@ -766,6 +828,7 @@ contains
 
     complex(kind=dp), intent(in) :: v_matrix(:, :, :)
     complex(kind=dp), allocatable, intent(inout) :: CC_R(:, :, :, :, :) ! <0|r_alpha.H(r-R)_beta|R>
+    complex(kind=dp), allocatable :: CC_R_temp(:, :, :, :, :)
 
     logical, intent(in) :: have_disentangled
     character(len=50), intent(in) :: seedname
@@ -787,8 +850,10 @@ contains
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_start('get_oper: get_CC_R', timer)
 
+    allocate (CC_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3, 3))
+
     if (.not. allocated(CC_R)) then
-      allocate (CC_R(num_wann, num_wann, nrpts, 3, 3))
+      allocate (CC_R(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3, 3))
     else
       if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
         call io_stopwatch_stop('get_oper: get_CC_R', timer)
@@ -904,18 +969,28 @@ contains
 
       do b = 1, 3
         do a = 1, 3
-          call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, CC_q(:, :, :, a, b), CC_R(:, :, :, a, b))
+          call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, &
+                              CC_q(:, :, :, a, b), CC_R_temp(:, :, :, a, b))
+        enddo
+      enddo
+
+      do b = 1, 3
+        do a = 1, 3
+          call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
+                                     CC_R_temp(:, :, :, a, b), CC_R(:, :, :, a, b))
         enddo
       enddo
 
     endif !on_root
 
-    call comms_bcast(CC_R(1, 1, 1, 1, 1), num_wann*num_wann*nrpts*3*3, error, comm)
+    call comms_bcast(CC_R(1, 1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3*3, error, comm)
     if (allocated(error)) return
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_stop('get_oper: get_CC_R', timer)
     return
+
+    deallocate (CC_R_temp)
 
 105 call set_error_file(error, 'Error: Problem opening input file '//trim(seedname)//'.uHu', comm)
     return
@@ -925,34 +1000,39 @@ contains
   end subroutine get_CC_R
 
   !================================================
-  subroutine get_FF_R(num_bands, num_kpts, num_wann, nrpts, irvec, v_matrix, FF_R, dis_manifold, &
-                      kmesh_info, kpt_latt, print_output, have_disentangled, stdout, seedname, &
-                      timer, error, comm)
+  subroutine get_FF_R(num_bands, num_kpts, num_wann, wigner_seitz, ws_distance, ws_region, v_matrix, &
+                      FF_R, dis_manifold, kmesh_info, kpt_latt, print_output, have_disentangled, stdout, &
+                      seedname, timer, error, comm)
     !================================================
     !
     !! FF_ab(R) = <0|r_a.(r-R)_b|R> is the Fourier transform of
     !! FF_ab(k) = <del_a u|del_b u> (a=alpha,b=beta)
     !
     !================================================
-
-    use w90_types, only: dis_manifold_type, kmesh_info_type, print_output_type, timer_list_type
+    use w90_postw90_types, only: wigner_seitz_type
+    use w90_types, only: dis_manifold_type, kmesh_info_type, ws_distance_type, ws_region_type, &
+      print_output_type, timer_list_type
 
     implicit none
 
     ! arguments
     type(dis_manifold_type), intent(in) :: dis_manifold
     type(kmesh_info_type), intent(in)   :: kmesh_info
+    type(wigner_seitz_type), intent(in) :: wigner_seitz
+    type(ws_distance_type), intent(in) :: ws_distance
+    type(ws_region_type), intent(in) :: ws_region
     type(print_output_type), intent(in) :: print_output
     type(timer_list_type), intent(inout) :: timer
     type(w90_comm_type), intent(in)       :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    integer, intent(in) :: num_bands, num_kpts, num_wann, nrpts, stdout, irvec(:, :)
+    integer, intent(in) :: num_bands, num_kpts, num_wann, stdout
 
     real(kind=dp), intent(in) :: kpt_latt(:, :)
 
     complex(kind=dp), intent(in) :: v_matrix(:, :, :)
     complex(kind=dp), allocatable, intent(inout) :: FF_R(:, :, :, :, :) ! <0|r_alpha.(r-R)_beta|R>
+    complex(kind=dp), allocatable :: FF_R_temp(:, :, :, :, :)
 
     character(len=50), intent(in) :: seedname
 
@@ -974,8 +1054,10 @@ contains
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_start('get_oper: get_FF_R', timer)
 
+    allocate (FF_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3, 3))
+
     if (.not. allocated(FF_R)) then
-      allocate (FF_R(num_wann, num_wann, nrpts, 3, 3))
+      allocate (FF_R(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3, 3))
     else
       if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
         call io_stopwatch_stop('get_oper: get_FF_R', timer)
@@ -1080,18 +1162,28 @@ contains
 
       do b = 1, 3
         do a = 1, 3
-          call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, FF_q(:, :, :, a, b), FF_R(:, :, :, a, b))
+          call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, &
+                              FF_q(:, :, :, a, b), FF_R_temp(:, :, :, a, b))
+        enddo
+      enddo
+
+      do b = 1, 3
+        do a = 1, 3
+          call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
+                                     FF_R_temp(:, :, :, a, b), FF_R(:, :, :, a, b))
         enddo
       enddo
 
     endif !on_root
 
-    call comms_bcast(FF_R(1, 1, 1, 1, 1), num_wann*num_wann*nrpts*3*3, error, comm)
+    call comms_bcast(FF_R(1, 1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3*3, error, comm)
     if (allocated(error)) return
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_stop('get_oper: get_FF_R', timer)
     return
+
+    deallocate (FF_R_temp)
 
 107 call set_error_file(error, 'Error: Problem opening input file '//trim(seedname)//'.uIu', comm)
     return
@@ -1102,8 +1194,8 @@ contains
 
   !================================================
   subroutine get_SS_R(dis_manifold, kpt_latt, print_output, pw90_oper_read, SS_R, v_matrix, &
-                      eigval, irvec, nrpts, num_bands, num_kpts, num_wann, have_disentangled, &
-                      seedname, stdout, timer, error, comm)
+                      eigval, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, num_wann, &
+                      have_disentangled, seedname, stdout, timer, error, comm)
     !================================================
     !
     !! Wannier representation of the Pauli matrices: <0n|sigma_a|Rm>
@@ -1111,26 +1203,31 @@ contains
     !
     !================================================
 
-    use w90_postw90_types, only: pw90_oper_read_type
-    use w90_types, only: dis_manifold_type, print_output_type, timer_list_type
+    use w90_postw90_types, only: pw90_oper_read_type, wigner_seitz_type
+    use w90_types, only: dis_manifold_type, kmesh_info_type, ws_distance_type, ws_region_type, &
+      print_output_type, timer_list_type
 
     implicit none
 
     ! arguments
     type(dis_manifold_type), intent(in) :: dis_manifold
     type(pw90_oper_read_type), intent(in) :: pw90_oper_read
+    type(wigner_seitz_type), intent(in) :: wigner_seitz
+    type(ws_distance_type), intent(in) :: ws_distance
+    type(ws_region_type), intent(in) :: ws_region
     type(print_output_type), intent(in) :: print_output
     type(timer_list_type), intent(inout) :: timer
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    integer, intent(in) :: stdout, nrpts, num_bands, num_kpts, num_wann, irvec(:, :)
+    integer, intent(in) :: stdout, num_bands, num_kpts, num_wann
 
     real(kind=dp), intent(in) :: eigval(:, :)
     real(kind=dp), intent(in) :: kpt_latt(:, :)
 
     complex(kind=dp), intent(in) :: v_matrix(:, :, :)
     complex(kind=dp), allocatable, intent(inout) :: SS_R(:, :, :, :) ! <0n|sigma_x,y,z|Rm>
+    complex(kind=dp), allocatable :: SS_R_temp(:, :, :, :)
 
     character(len=50), intent(in) :: seedname
     logical, intent(in) :: have_disentangled
@@ -1149,8 +1246,10 @@ contains
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_start('get_oper: get_SS_R', timer)
 
+    allocate (SS_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3))
+
     if (.not. allocated(SS_R)) then
-      allocate (SS_R(num_wann, num_wann, nrpts, 3))
+      allocate (SS_R(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3))
     else
       return ! been here before
     end if
@@ -1256,17 +1355,22 @@ contains
         enddo !is
       enddo !ik
 
-      call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, SS_q(:, :, :, 1), SS_R(:, :, :, 1))
-      call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, SS_q(:, :, :, 2), SS_R(:, :, :, 2))
-      call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, SS_q(:, :, :, 3), SS_R(:, :, :, 3))
+      call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, SS_q(:, :, :, 1), SS_R_temp(:, :, :, 1))
+      call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, SS_q(:, :, :, 2), SS_R_temp(:, :, :, 2))
+      call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, SS_q(:, :, :, 3), SS_R_temp(:, :, :, 3))
 
+      call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, SS_R_temp(:, :, :, 1), SS_R(:, :, :, 1))
+      call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, SS_R_temp(:, :, :, 2), SS_R(:, :, :, 2))
+      call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, SS_R_temp(:, :, :, 3), SS_R(:, :, :, 3))
     endif !on_root
 
-    call comms_bcast(SS_R(1, 1, 1, 1), num_wann*num_wann*nrpts*3, error, comm)
+    call comms_bcast(SS_R(1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3, error, comm)
     if (allocated(error)) return
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) call io_stopwatch_stop('get_oper: get_SS_R', timer)
     return
+
+    deallocate (SS_R_temp)
 
 109 call set_error_file(error, 'Error: Problem opening input file '//trim(seedname)//'.spn', comm)
     return
@@ -1277,9 +1381,9 @@ contains
 
   !================================================
   subroutine get_SHC_R(dis_manifold, kmesh_info, kpt_latt, print_output, pw90_oper_read, &
-                       pw90_spin_hall, SH_R, SHR_R, SR_R, v_matrix, eigval, scissors_shift, irvec, &
-                       nrpts, num_bands, num_kpts, num_wann, num_valence_bands, have_disentangled, &
-                       seedname, stdout, timer, error, comm)
+                       pw90_spin_hall, SH_R, SHR_R, SR_R, v_matrix, eigval, scissors_shift, &
+                       wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, num_wann, &
+                       num_valence_bands, have_disentangled, seedname, stdout, timer, error, comm)
     !================================================
     !
     !! Compute several matrices for spin Hall conductivity
@@ -1289,8 +1393,9 @@ contains
     !
     !================================================
 
-    use w90_postw90_types, only: pw90_oper_read_type, pw90_spin_hall_type
-    use w90_types, only: dis_manifold_type, kmesh_info_type, print_output_type, timer_list_type
+    use w90_postw90_types, only: pw90_oper_read_type, pw90_spin_hall_type, wigner_seitz_type
+    use w90_types, only: dis_manifold_type, kmesh_info_type, ws_distance_type, ws_region_type, &
+      print_output_type, timer_list_type
 
     implicit none
 
@@ -1300,12 +1405,14 @@ contains
     type(pw90_oper_read_type), intent(in) :: pw90_oper_read
     type(print_output_type), intent(in) :: print_output
     type(pw90_spin_hall_type), intent(in) :: pw90_spin_hall
+    type(wigner_seitz_type), intent(in) :: wigner_seitz
+    type(ws_distance_type), intent(in) :: ws_distance
+    type(ws_region_type), intent(in) :: ws_region
     type(timer_list_type), intent(inout) :: timer
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    integer, intent(in) :: stdout, nrpts, num_bands, num_kpts, num_wann, num_valence_bands
-    integer, intent(in) :: irvec(:, :)
+    integer, intent(in) :: stdout, num_bands, num_kpts, num_wann, num_valence_bands
 
     real(kind=dp), intent(in) :: eigval(:, :)
     real(kind=dp), intent(in) :: scissors_shift
@@ -1315,6 +1422,10 @@ contains
     complex(kind=dp), allocatable, intent(inout) :: SR_R(:, :, :, :, :) ! <0n|sigma_x,y,z.(r-R)_alpha|Rm>
     complex(kind=dp), allocatable, intent(inout) :: SHR_R(:, :, :, :, :) ! <0n|sigma_x,y,z.H.(r-R)_alpha|Rm>
     complex(kind=dp), allocatable, intent(inout) :: SH_R(:, :, :, :) ! <0n|sigma_x,y,z.H|Rm>
+
+    complex(kind=dp), allocatable :: SR_R_temp(:, :, :, :, :)
+    complex(kind=dp), allocatable :: SHR_R_temp(:, :, :, :, :)
+    complex(kind=dp), allocatable :: SH_R_temp(:, :, :, :)
 
     character(len=50), intent(in) :: seedname
     logical, intent(in) :: have_disentangled
@@ -1353,22 +1464,26 @@ contains
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_start('get_oper: get_SHC_R', timer)
 
+    allocate (SR_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3, 3))
+    allocate (SHR_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3, 3))
+    allocate (SH_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3))
+
     if (.not. allocated(SR_R)) then
-      allocate (SR_R(num_wann, num_wann, nrpts, 3, 3))
+      allocate (SR_R(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3, 3))
     else
       if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
         call io_stopwatch_stop('get_oper: get_SHC_R', timer)
       return
     end if
     if (.not. allocated(SHR_R)) then
-      allocate (SHR_R(num_wann, num_wann, nrpts, 3, 3))
+      allocate (SHR_R(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3, 3))
     else
       if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
         call io_stopwatch_stop('get_oper: get_SHC_R', timer)
       return
     end if
     if (.not. allocated(SH_R)) then
-      allocate (SH_R(num_wann, num_wann, nrpts, 3))
+      allocate (SH_R(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3))
     else
       if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
         call io_stopwatch_stop('get_oper: get_SHC_R', timer)
@@ -1638,26 +1753,42 @@ contains
 
       do is = 1, 3
         ! QZYZ18 Eq.(46)
-        call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, SH_q(:, :, :, is), SH_R(:, :, :, is))
+        call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, &
+                            SH_q(:, :, :, is), SH_R_temp(:, :, :, is))
         do idir = 1, 3
           ! QZYZ18 Eq.(44)
-          call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, SR_q(:, :, :, is, idir), &
-                              SR_R(:, :, :, is, idir))
+          call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, &
+                              SR_q(:, :, :, is, idir), SR_R_temp(:, :, :, is, idir))
           ! QZYZ18 Eq.(45)
-          call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, SHR_q(:, :, :, is, idir), &
-                              SHR_R(:, :, :, is, idir))
+          call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, &
+                              SHR_q(:, :, :, is, idir), SHR_R_temp(:, :, :, is, idir))
         end do
       end do
+
+      do is = 1, 3
+        ! QZYZ18 Eq.(46)
+        call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
+                                   SH_R_temp(:, :, :, is), SH_R(:, :, :, is))
+        do idir = 1, 3
+          ! QZYZ18 Eq.(44)
+          call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
+                                     SR_R_temp(:, :, :, is, idir), SR_R(:, :, :, is, idir))
+          ! QZYZ18 Eq.(45)
+          call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
+                                     SHR_R_temp(:, :, :, is, idir), SHR_R(:, :, :, is, idir))
+        end do
+      end do
+
       SR_R = cmplx_i*SR_R
       SHR_R = cmplx_i*SHR_R
 
     endif !on_root
 
-    call comms_bcast(SH_R(1, 1, 1, 1), num_wann*num_wann*nrpts*3, error, comm)
+    call comms_bcast(SH_R(1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3, error, comm)
     if (allocated(error)) return
-    call comms_bcast(SR_R(1, 1, 1, 1, 1), num_wann*num_wann*nrpts*3*3, error, comm)
+    call comms_bcast(SR_R(1, 1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3*3, error, comm)
     if (allocated(error)) return
-    call comms_bcast(SHR_R(1, 1, 1, 1, 1), num_wann*num_wann*nrpts*3*3, error, comm)
+    call comms_bcast(SHR_R(1, 1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3*3, error, comm)
     if (allocated(error)) return
 
     ! end copying from get_AA_R, Junfeng Qiao
@@ -1665,6 +1796,10 @@ contains
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_stop('get_oper: get_SHC_R', timer)
     return
+
+    deallocate (SH_R_temp)
+    deallocate (SR_R_temp)
+    deallocate (SHR_R_temp)
 
 101 call set_error_file(error, 'Error: Problem opening input file '//trim(seedname)//'.mmn', comm)
     return
@@ -1679,8 +1814,8 @@ contains
 
   !================================================
   subroutine get_SBB_R(dis_manifold, kmesh_info, kpt_latt, print_output, SBB_R, v_matrix, &
-                       scissors_shift, irvec, nrpts, num_bands, num_kpts, num_wann, &
-                       have_disentangled, seedname, stdout, timer, error, comm)
+                       scissors_shift, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, &
+                       num_wann, have_disentangled, seedname, stdout, timer, error, comm)
     !================================================!
     !
     ! SBB_ab(R) = <0|s_a.H.(r-R)_b|R> is the Fourier transform of
@@ -1688,19 +1823,24 @@ contains
     !
     !================================================!
 
-    use w90_types, only: dis_manifold_type, kmesh_info_type, print_output_type, timer_list_type
+    use w90_postw90_types, only: wigner_seitz_type
+    use w90_types, only: dis_manifold_type, kmesh_info_type, ws_distance_type, ws_region_type, &
+      print_output_type, timer_list_type
 
     implicit none
 
     ! arguments
     type(dis_manifold_type), intent(in) :: dis_manifold
     type(kmesh_info_type), intent(in)   :: kmesh_info
+    type(wigner_seitz_type), intent(in) :: wigner_seitz
+    type(ws_distance_type), intent(in) :: ws_distance
+    type(ws_region_type), intent(in) :: ws_region
     type(print_output_type), intent(in) :: print_output
     type(timer_list_type), intent(inout) :: timer
     type(w90_comm_type), intent(in)       :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    integer, intent(in) :: num_bands, num_kpts, num_wann, nrpts, stdout, irvec(:, :)
+    integer, intent(in) :: num_bands, num_kpts, num_wann, stdout
 
     !real(kind=dp), intent(in) :: eigval(:, :)
     real(kind=dp), intent(in) :: scissors_shift
@@ -1708,6 +1848,7 @@ contains
 
     complex(kind=dp), intent(in) :: v_matrix(:, :, :)
     complex(kind=dp), allocatable, intent(inout) :: SBB_R(:, :, :, :, :) ! <0n|sigma_x,y,z.H.(r-R)_alpha|Rm>
+    complex(kind=dp), allocatable :: SBB_R_temp(:, :, :, :, :)
 
     logical, intent(in) :: have_disentangled
     character(len=50), intent(in) :: seedname
@@ -1728,8 +1869,10 @@ contains
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_start('get_oper: get_SBB_R', timer)
 
+    allocate (SBB_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3, 3))
+
     if (.not. allocated(SBB_R)) then
-      allocate (SBB_R(num_wann, num_wann, nrpts, 3, 3))
+      allocate (SBB_R(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3, 3))
     else
       if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
         call io_stopwatch_stop('get_oper: get_SBB_R', timer)
@@ -1821,18 +1964,28 @@ contains
       close (sHu_in)
       do b = 1, 3
         do a = 1, 3
-          call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, SBB_q(:, :, :, a, b), SBB_R(:, :, :, a, b))
+          call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, &
+                              SBB_q(:, :, :, a, b), SBB_R_temp(:, :, :, a, b))
+        enddo
+      enddo
+
+      do b = 1, 3
+        do a = 1, 3
+          call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
+                                     SBB_R_temp(:, :, :, a, b), SBB_R(:, :, :, a, b))
         enddo
       enddo
 
     endif !on_root
 
-    call comms_bcast(SBB_R(1, 1, 1, 1, 1), num_wann*num_wann*nrpts*3*3, error, comm)
+    call comms_bcast(SBB_R(1, 1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3*3, error, comm)
     if (allocated(error)) return
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_stop('get_oper: get_SBB_R', timer)
     return
+
+    deallocate (SBB_R_temp)
 
 111 call set_error_file(error, 'Error: Problem opening input file '//trim(seedname)//'.sHu', comm)
     return
@@ -1843,7 +1996,7 @@ contains
 
   !================================================
   subroutine get_SAA_R(dis_manifold, kmesh_info, kpt_latt, print_output, SAA_R, v_matrix, &
-                       scissors_shift, irvec, nrpts, num_bands, num_kpts, num_wann, &
+                       scissors_shift, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, num_wann, &
                        have_disentangled, seedname, stdout, timer, error, comm)
     !================================================!
     !
@@ -1852,19 +2005,24 @@ contains
     !
     !================================================!
 
-    use w90_types, only: dis_manifold_type, kmesh_info_type, print_output_type, timer_list_type
+    use w90_postw90_types, only: wigner_seitz_type
+    use w90_types, only: dis_manifold_type, kmesh_info_type, ws_distance_type, ws_region_type, &
+      print_output_type, timer_list_type
 
     implicit none
 
     ! arguments
     type(dis_manifold_type), intent(in) :: dis_manifold
     type(kmesh_info_type), intent(in)   :: kmesh_info
+    type(wigner_seitz_type), intent(in) :: wigner_seitz
+    type(ws_distance_type), intent(in) :: ws_distance
+    type(ws_region_type), intent(in) :: ws_region
     type(print_output_type), intent(in) :: print_output
     type(timer_list_type), intent(inout) :: timer
     type(w90_comm_type), intent(in)      :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    integer, intent(in) :: num_bands, num_kpts, num_wann, nrpts, stdout, irvec(:, :)
+    integer, intent(in) :: num_bands, num_kpts, num_wann, stdout
 
     !real(kind=dp), intent(in) :: eigval(:, :)
     real(kind=dp), intent(in) :: scissors_shift
@@ -1872,6 +2030,7 @@ contains
 
     complex(kind=dp), intent(in) :: v_matrix(:, :, :)
     complex(kind=dp), allocatable, intent(inout) :: SAA_R(:, :, :, :, :) !<0n|sigma_x,y,z.(r-R)_alpha|Rm>
+    complex(kind=dp), allocatable :: SAA_R_temp(:, :, :, :, :)
 
     logical, intent(in) :: have_disentangled
     character(len=50), intent(in) :: seedname
@@ -1892,8 +2051,10 @@ contains
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_start('get_oper: get_SAA_R', timer)
 
+    allocate (SAA_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3, 3))
+
     if (.not. allocated(SAA_R)) then
-      allocate (SAA_R(num_wann, num_wann, nrpts, 3, 3))
+      allocate (SAA_R(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3, 3))
     else
       if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
         call io_stopwatch_stop('get_oper: get_SAA_R', timer)
@@ -1987,16 +2148,26 @@ contains
 
       do b = 1, 3
         do a = 1, 3
-          call fourier_q_to_R(num_kpts, nrpts, irvec, kpt_latt, SAA_q(:, :, :, a, b), SAA_R(:, :, :, a, b))
+          call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, &
+                              SAA_q(:, :, :, a, b), SAA_R_temp(:, :, :, a, b))
+        enddo
+      enddo
+
+      do b = 1, 3
+        do a = 1, 3
+          call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
+                                     SAA_R_temp(:, :, :, a, b), SAA_R(:, :, :, a, b))
         enddo
       enddo
     endif !on_root
 
-    call comms_bcast(SAA_R(1, 1, 1, 1, 1), num_wann*num_wann*nrpts*3*3, error, comm)
+    call comms_bcast(SAA_R(1, 1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3*3, error, comm)
     if (allocated(error)) return
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) call io_stopwatch_stop('get_oper: get_SAA_R', timer)
     return
+
+    deallocate (SAA_R_temp)
 
 113 call set_error_file(error, 'Error: Problem opening input file '//trim(seedname)//'.sIu', comm)
     return
@@ -2120,5 +2291,60 @@ contains
                         S, eigval(wm_a:wm_a + ns_a - 1, ik_a), H)
 
   end subroutine get_gauge_overlap_matrix
+
+  !============================================================================
+  subroutine operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, op_R, op_R_opt_ws)
+    !==========================================================================
+    !
+    ! Also, divide real-space matrix elements with the degeneracy factor.
+    ! For use_ws_distance = true, reorder the real-space grid index
+    ! using ir_ind_ws_to_pw90.
+    !
+    ! After this routine, irvec_pw90, crvec_pw90, and nrpts_pw90 can be
+    ! used in the fourier_R_to_k routines, irrespective of use_ws_distance.
+    !
+    !==========================================================================
+
+    use w90_constants, only: dp, cmplx_0
+    use w90_types, only: ws_region_type, ws_distance_type
+    use w90_postw90_types, only: wigner_seitz_type
+
+    type(ws_distance_type), intent(in) :: ws_distance
+    type(ws_region_type), intent(in) :: ws_region
+    type(wigner_seitz_type), intent(in) :: wigner_seitz
+
+    integer, intent(in) :: num_wann
+    complex(kind=dp), intent(in) :: op_R(num_wann, num_wann, wigner_seitz%nrpts)
+    !! operator in real-space grid, before applying ndegen
+    complex(kind=dp), intent(inout) :: op_R_opt_ws(num_wann, num_wann, wigner_seitz%nrpts_pw90)
+    !! operator in real-space grid, after applying ndegen
+
+    integer :: ir, jr, i, j, ideg
+
+    op_R_opt_ws = cmplx_0
+
+    if (ws_region%use_ws_distance) then
+
+      do ir = 1, wigner_seitz%nrpts
+        do j = 1, num_wann
+          do i = 1, num_wann
+            do ideg = 1, ws_distance%ndeg(i, j, ir)
+              jr = wigner_seitz%ir_ind_ws_to_pw90(ideg, i, j, ir)
+              op_R_opt_ws(i, j, jr) = op_R_opt_ws(i, j, jr) &
+                                      + op_R(i, j, ir)/real(wigner_seitz%ndegen(ir)* &
+                                                            ws_distance%ndeg(i, j, ir), dp)
+            enddo
+          enddo
+        enddo
+      enddo
+
+    else ! .not. use_ws_distance
+      ! Note that nrpts_pw90 == nrpts if use_ws_distance == .false.
+      do ir = 1, wigner_seitz%nrpts
+        op_R_opt_ws(:, :, ir) = op_R(:, :, ir)/real(wigner_seitz%ndegen(ir), dp)
+      enddo
+    endif ! use_ws_distance
+
+  end subroutine operator_wigner_setup
 
 end module w90_get_oper
