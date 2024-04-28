@@ -422,14 +422,15 @@ contains
 
     complex(kind=dp), intent(in) :: v_matrix(:, :, :)
     complex(kind=dp), allocatable, intent(inout) :: AA_R(:, :, :, :) ! <0n|r|Rm>
-    complex(kind=dp), allocatable :: AA_R_temp(:, :, :, :)
+    complex(kind=dp), allocatable :: AA_R_b_temp(:, :, :, :, :)
+    complex(kind=dp), allocatable :: AA_R_b(:, :, :, :, :)
 
     logical, intent(in) :: have_disentangled
     character(len=50), intent(in) :: seedname
 
     ! local variables
-    complex(kind=dp), allocatable :: AA_q(:, :, :, :)
-    complex(kind=dp), allocatable :: AA_q_diag(:, :)
+    complex(kind=dp), allocatable :: AA_q_b(:, :, :, :, :)
+    complex(kind=dp), allocatable :: AA_q_b_diag(:, :, :)
     complex(kind=dp), allocatable :: S_o(:, :)
     complex(kind=dp), allocatable :: S(:, :)
     integer                       :: n, m, i, j, &
@@ -468,9 +469,10 @@ contains
     ! Do everything on root, broadcast AA_R at the end (smaller than S_o)
     !
     if (on_root) then
-      allocate (AA_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3))
-      allocate (AA_q(num_wann, num_wann, num_kpts, 3))
-      allocate (AA_q_diag(num_wann, 3))
+      allocate (AA_R_b_temp(num_wann, num_wann, wigner_seitz%nrpts, kmesh_info%nntot, 3))
+      allocate (AA_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, kmesh_info%nntot, 3))
+      allocate (AA_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3))
+      allocate (AA_q_b_diag(num_wann, kmesh_info%nntot, 3))
       allocate (S_o(num_bands, num_bands))
       allocate (S(num_wann, num_wann))
 
@@ -509,7 +511,7 @@ contains
         return
       endif
 
-      AA_q = cmplx_0
+      AA_q_b = cmplx_0
       ik_prev = 0
 
       ! Composite loop over k-points ik (outer loop) and neighbors ik2 (inner)
@@ -576,57 +578,70 @@ contains
         ! Berry connection matrix
         ! Assuming all neighbors of a given point are read in sequence!
         !
-        if (pw90_berry%transl_inv .and. ik .ne. ik_prev) AA_q_diag(:, :) = cmplx_0
+        if (pw90_berry%transl_inv .and. ik .ne. ik_prev) AA_q_b_diag(:, :, :) = cmplx_0
         do idir = 1, 3
-          AA_q(:, :, ik, idir) = AA_q(:, :, ik, idir) &
-                                 + cmplx_i*kmesh_info%wb(nn)*kmesh_info%bk(idir, nn, ik)*S(:, :)
+          AA_q_b(:, :, ik, nn, idir) = AA_q_b(:, :, ik, nn, idir) &
+                                       + cmplx_i*kmesh_info%wb(nn)*kmesh_info%bk(idir, nn, ik)*S(:, :)
           if (pw90_berry%transl_inv) then
             !
             ! Rewrite band-diagonal elements a la Eq.(31) of MV97
             !
             do i = 1, num_wann
-              AA_q_diag(i, idir) = AA_q_diag(i, idir) &
-                                   - kmesh_info%wb(nn)*kmesh_info%bk(idir, nn, ik) &
-                                   *aimag(log(S(i, i)))
+              AA_q_b_diag(i, nn, idir) = AA_q_b_diag(i, nn, idir) &
+                                         - kmesh_info%wb(nn)*kmesh_info%bk(idir, nn, ik) &
+                                         *aimag(log(S(i, i)))
             enddo
           endif
         end do
-        ! Assuming all neighbors of a given point are read in sequence!
-        if (nn_count == kmesh_info%nntot) then !looped over all neighbors
-          do idir = 1, 3
-            if (pw90_berry%transl_inv) then
-              do n = 1, num_wann
-                AA_q(n, n, ik, idir) = AA_q_diag(n, idir)
-              enddo
-            endif
-            !
-            ! Since Eq.(44) WYSV06 does not preserve the Hermiticity of the
-            ! Berry potential matrix, take Hermitean part (whether this
-            ! makes a difference or not for e.g. the AHC, depends on which
-            ! expression is used to evaluate the Berry curvature.
-            ! See comments in berry_wanint.F90)
-            !
-            AA_q(:, :, ik, idir) = &
-              0.5_dp*(AA_q(:, :, ik, idir) &
-                      + conjg(transpose(AA_q(:, :, ik, idir))))
-          enddo
-        end if
+
+        do idir = 1, 3
+          if (pw90_berry%transl_inv) then
+            do n = 1, num_wann
+              AA_q_b(n, n, ik, nn, idir) = AA_q_b_diag(n, nn, idir)
+            enddo
+          endif
+        enddo
 
         ik_prev = ik
       enddo !ncount
 
       close (mmn_in)
 
-      call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, AA_q(:, :, :, 1), AA_R_temp(:, :, :, 1))
-      call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, AA_q(:, :, :, 2), AA_R_temp(:, :, :, 2))
-      call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, AA_q(:, :, :, 3), AA_R_temp(:, :, :, 3))
+      if (pw90_berry%transl_inv_full) then
+      else
+        AA_q_b(:, :, :, 1, :) = sum(AA_q_b, 4)
 
-      ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
-      do idir = 1, 3
-        call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, AA_R_temp(:, :, :, idir), AA_R(:, :, :, idir))
-      enddo
+        !
+        ! Since Eq.(44) WYSV06 does not preserve the Hermiticity of the
+        ! Berry potential matrix, take Hermitean part (whether this
+        ! makes a difference or not for e.g. the AHC, depends on which
+        ! expression is used to evaluate the Berry curvature.
+        ! See comments in berry_wanint.F90)
+        !
+        do idir = 1, 3
+          do ik = 1, num_kpts
+            AA_q_b(:, :, ik, 1, idir) = &
+              0.5_dp*(AA_q_b(:, :, ik, 1, idir) &
+                      + conjg(transpose(AA_q_b(:, :, ik, 1, idir))))
+          enddo
+        enddo
 
-      deallocate (AA_R_temp)
+        do idir = 1, 3
+          call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, &
+                              AA_q_b(:, :, :, 1, idir), AA_R_b_temp(:, :, :, 1, idir))
+        enddo
+
+        ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
+        do idir = 1, 3
+          call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
+                                     AA_R_b_temp(:, :, :, 1, idir), AA_R_b(:, :, :, 1, idir))
+        enddo
+
+        AA_R = AA_R_b(:, :, :, 1, :)
+      endif
+
+      deallocate (AA_R_b_temp)
+      deallocate (AA_R_b)
 
     endif !on_root
 
