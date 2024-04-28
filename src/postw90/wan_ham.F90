@@ -681,7 +681,7 @@ contains
     !================================================!
 
     use w90_constants, only: dp
-    use w90_get_oper, only: get_HH_R, get_AA_R
+    use w90_get_oper, only: get_HH_R, get_AA_R_effective, get_AA_R
     use w90_postw90_common, only: pw90common_fourier_R_to_k_new_second_d_TB_conv
     use w90_types, only: print_output_type, wannier_data_type, dis_manifold_type, &
       kmesh_info_type, ws_region_type, ws_distance_type, timer_list_type
@@ -732,10 +732,15 @@ contains
                   stdout, timer, error, comm)
     if (allocated(error)) return
 
-    call get_AA_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, AA_R, HH_R, &
-                  v_matrix, eigval, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, &
-                  num_wann, effective_model, have_disentangled, seedname, stdout, timer, error, &
-                  comm)
+    if (effective_model) then
+      call get_AA_R_effective(print_output, AA_R, HH_R, wigner_seitz%nrpts, num_wann, seedname, &
+                              stdout, timer, error, comm)
+    else
+      call get_AA_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, AA_R, &
+                    v_matrix, eigval, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, &
+                    num_wann, have_disentangled, seedname, stdout, timer, error, comm)
+    endif
+
     if (allocated(error)) return
 
     call pw90common_fourier_R_to_k_new_second_d_TB_conv(kpt, HH_R, AA_R, num_wann, ws_region, &

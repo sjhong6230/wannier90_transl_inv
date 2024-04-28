@@ -81,7 +81,7 @@ contains
 
     use w90_comms, only: comms_reduce, w90_comm_type, mpirank, mpisize
     use w90_constants, only: dp, twopi, pw90_physical_constants_type
-    use w90_get_oper, only: get_HH_R, get_AA_R, get_BB_R, get_CC_R, get_SS_R
+    use w90_get_oper, only: get_HH_R, get_AA_R_effective, get_AA_R, get_BB_R, get_CC_R, get_SS_R
     use w90_io, only: io_stopwatch_start, io_stopwatch_stop
     use w90_postw90_types, only: pw90_gyrotropic_type, pw90_berry_mod_type, pw90_oper_read_type, &
       pw90_band_deriv_degen_type, wigner_seitz_type
@@ -214,9 +214,14 @@ contains
 
     if (eval_D .or. eval_Dw .or. eval_K .or. eval_NOA) then
 
-      call get_AA_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, AA_R, HH_R, v_matrix, &
-                    eigval, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, num_wann, &
-                    effective_model, have_disentangled, seedname, stdout, timer, error, comm)
+      if (effective_model) then
+        call get_AA_R_effective(print_output, AA_R, HH_R, wigner_seitz%nrpts, num_wann, seedname, &
+                                stdout, timer, error, comm)
+      else
+        call get_AA_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, AA_R, &
+                      v_matrix, eigval, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, &
+                      num_wann, have_disentangled, seedname, stdout, timer, error, comm)
+      endif
       if (allocated(error)) return
 
     endif

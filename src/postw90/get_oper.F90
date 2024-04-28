@@ -276,9 +276,118 @@ contains
   end subroutine get_HH_R
 
   !================================================
-  subroutine get_AA_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, AA_R, HH_R, &
+  subroutine get_AA_R_effective(print_output, AA_R, HH_R, nrpts, num_wann, seedname, stdout, timer, error, comm)
+    !================================================
+    !
+    !! AA_a(R) = <0|r_a|R> is the Fourier transform
+    !! of the Berrry connection AA_a(k) = i<u|del_a u>
+    !! (a=x,y,z)
+    !
+    !================================================
+
+    use w90_types, only: print_output_type, timer_list_type, &
+      ws_distance_type, ws_region_type
+
+    implicit none
+
+    ! arguments
+    type(print_output_type), intent(in)   :: print_output
+    type(timer_list_type), intent(inout) :: timer
+    type(w90_comm_type), intent(in)         :: comm
+    type(w90_error_type), allocatable, intent(out) :: error
+
+    integer, intent(in) :: num_wann, nrpts, stdout
+
+    complex(kind=dp), allocatable, intent(inout) :: HH_R(:, :, :) !  <0n|r|Rm>
+    complex(kind=dp), allocatable, intent(inout) :: AA_R(:, :, :, :) ! <0n|r|Rm>
+
+    character(len=50), intent(in) :: seedname
+
+    ! local variables
+    integer                       :: n, m, i, j, file_unit, ir, io, ivdum(3), ivdum_old(3)
+    real(kind=dp)                 :: rdum1_real, rdum1_imag, rdum2_real, rdum2_imag, &
+                                     rdum3_real, rdum3_imag
+    logical                       :: nn_found
+    character(len=60)             :: header
+    logical :: on_root = .false.
+
+    if (mpirank(comm) == 0) on_root = .true.
+
+    if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
+      call io_stopwatch_start('get_oper: get_AA_R', timer)
+
+    if (.not. allocated(AA_R)) then
+      allocate (AA_R(num_wann, num_wann, nrpts, 3))
+    else
+      if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
+        call io_stopwatch_stop('get_oper: get_AA_R', timer)
+      return
+    end if
+
+    ! Real-space position matrix elements read from file
+    !
+    if (.not. allocated(HH_R)) then
+      call set_error_fatal(error, 'Error in get_AA_R: Must read file'//trim(seedname)//'_HH_R.dat first', comm)
+      return
+    endif
+    AA_R = cmplx_0
+    if (on_root) then
+      write (stdout, '(/a)') ' Reading position matrix elements from file ' &
+        //trim(seedname)//'_AA_R.dat'
+      open (newunit=file_unit, file=trim(seedname)//'_AA_R.dat', form='formatted', &
+            status='old', err=103)
+      read (file_unit, *) ! header
+      ir = 1
+      ivdum_old(:) = 0
+      n = 1
+      do
+        read (file_unit, '(5I5,6F12.6)', iostat=io) &
+          ivdum(1:3), j, i, rdum1_real, rdum1_imag, &
+          rdum2_real, rdum2_imag, rdum3_real, rdum3_imag
+        if (io < 0) exit
+        if (i < 1 .or. i > num_wann .or. j < 1 .or. j > num_wann) then
+          write (stdout, *) 'num_wann=', num_wann, '  i=', i, '  j=', j
+          call set_error_fatal(error, 'Error in get_AA_R: orbital indices out of bounds', comm)
+          return
+        endif
+        if (n > 1) then
+          if (ivdum(1) /= ivdum_old(1) .or. ivdum(2) /= ivdum_old(2) .or. &
+              ivdum(3) /= ivdum_old(3)) ir = ir + 1
+        endif
+        ivdum_old = ivdum
+        AA_R(j, i, ir, 1) = AA_R(j, i, ir, 1) + cmplx(rdum1_real, rdum1_imag, kind=dp)
+        AA_R(j, i, ir, 2) = AA_R(j, i, ir, 2) + cmplx(rdum2_real, rdum2_imag, kind=dp)
+        AA_R(j, i, ir, 3) = AA_R(j, i, ir, 3) + cmplx(rdum3_real, rdum3_imag, kind=dp)
+        n = n + 1
+      enddo
+      close (file_unit)
+      ! AA_R may not contain the same number of R-vectors as HH_R
+      ! (e.g., if a diagonal representation of the position matrix
+      ! elements is used, but it cannot be larger
+      if (ir > nrpts) then
+        write (stdout, *) 'ir=', ir, '  nrpts=', nrpts
+        call set_error_fatal(error, 'Error in get_AA_R: inconsistent nrpts values', comm)
+        return
+      endif
+    endif
+    call comms_bcast(AA_R(1, 1, 1, 1), num_wann*num_wann*nrpts*3, error, comm)
+    if (allocated(error)) return
+    if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
+      call io_stopwatch_stop('get_oper: get_AA_R', timer)
+
+101 call set_error_file(error, 'Error: Problem opening input file '//trim(seedname)//'.mmn', comm)
+    return
+102 call set_error_file(error, 'Error: Problem reading input file '//trim(seedname)//'.mmn', comm)
+    return
+103 call set_error_file(error, 'Error in get_AA_R: problem opening file '//trim(seedname)//'_AA_R.dat', comm)
+    return !fixme jj restructure
+
+  end subroutine get_AA_R_effective
+
+!================================================
+  subroutine get_AA_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, AA_R, &
                       v_matrix, eigval, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, &
-                      num_wann, effective_model, have_disentangled, seedname, stdout, timer, error, comm)
+                      num_wann, have_disentangled, seedname, stdout, timer, error, comm)
     !================================================
     !
     !! AA_a(R) = <0|r_a|R> is the Fourier transform
@@ -312,12 +421,10 @@ contains
     real(kind=dp), intent(in) :: kpt_latt(:, :)
 
     complex(kind=dp), intent(in) :: v_matrix(:, :, :)
-    complex(kind=dp), allocatable, intent(inout) :: HH_R(:, :, :) !  <0n|r|Rm>
     complex(kind=dp), allocatable, intent(inout) :: AA_R(:, :, :, :) ! <0n|r|Rm>
     complex(kind=dp), allocatable :: AA_R_temp(:, :, :, :)
 
     logical, intent(in) :: have_disentangled
-    logical, intent(in) :: effective_model
     character(len=50), intent(in) :: seedname
 
     ! local variables
@@ -342,7 +449,6 @@ contains
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_start('get_oper: get_AA_R', timer)
 
-    allocate (AA_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3))
     if (.not. allocated(wigner_seitz%wannier_centres_from_AA_R)) then
       allocate (wigner_seitz%wannier_centres_from_AA_R(3, num_wann))
     endif
@@ -355,60 +461,6 @@ contains
       return
     end if
 
-    ! Real-space position matrix elements read from file
-    !
-    if (effective_model) then
-      if (.not. allocated(HH_R)) then
-        call set_error_fatal(error, 'Error in get_AA_R: Must read file'//trim(seedname)//'_HH_R.dat first', comm)
-        return
-      endif
-      AA_R = cmplx_0
-      if (on_root) then
-        write (stdout, '(/a)') ' Reading position matrix elements from file ' &
-          //trim(seedname)//'_AA_R.dat'
-        open (newunit=file_unit, file=trim(seedname)//'_AA_R.dat', form='formatted', &
-              status='old', err=103)
-        read (file_unit, *) ! header
-        ir = 1
-        ivdum_old(:) = 0
-        n = 1
-        do
-          read (file_unit, '(5I5,6F12.6)', iostat=io) &
-            ivdum(1:3), j, i, rdum1_real, rdum1_imag, &
-            rdum2_real, rdum2_imag, rdum3_real, rdum3_imag
-          if (io < 0) exit
-          if (i < 1 .or. i > num_wann .or. j < 1 .or. j > num_wann) then
-            write (stdout, *) 'num_wann=', num_wann, '  i=', i, '  j=', j
-            call set_error_fatal(error, 'Error in get_AA_R: orbital indices out of bounds', comm)
-            return
-          endif
-          if (n > 1) then
-            if (ivdum(1) /= ivdum_old(1) .or. ivdum(2) /= ivdum_old(2) .or. &
-                ivdum(3) /= ivdum_old(3)) ir = ir + 1
-          endif
-          ivdum_old = ivdum
-          AA_R_temp(j, i, ir, 1) = AA_R_temp(j, i, ir, 1) + cmplx(rdum1_real, rdum1_imag, kind=dp)
-          AA_R_temp(j, i, ir, 2) = AA_R_temp(j, i, ir, 2) + cmplx(rdum2_real, rdum2_imag, kind=dp)
-          AA_R_temp(j, i, ir, 3) = AA_R_temp(j, i, ir, 3) + cmplx(rdum3_real, rdum3_imag, kind=dp)
-          n = n + 1
-        enddo
-        close (file_unit)
-        ! AA_R may not contain the same number of R-vectors as HH_R
-        ! (e.g., if a diagonal representation of the position matrix
-        ! elements is used, but it cannot be larger
-        if (ir > wigner_seitz%nrpts) then
-          write (stdout, *) 'ir=', ir, '  nrpts=', wigner_seitz%nrpts
-          call set_error_fatal(error, 'Error in get_AA_R: inconsistent nrpts values', comm)
-          return
-        endif
-      endif
-      call comms_bcast(AA_R_temp(1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts*3, error, comm)
-      if (allocated(error)) return
-      if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
-        call io_stopwatch_stop('get_oper: get_AA_R', timer)
-      return
-    endif
-
     ! Real-space position matrix elements calculated by Fourier
     ! transforming overlap matrices defined on the ab-initio
     ! reciprocal mesh
@@ -416,7 +468,7 @@ contains
     ! Do everything on root, broadcast AA_R at the end (smaller than S_o)
     !
     if (on_root) then
-
+      allocate (AA_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3))
       allocate (AA_q(num_wann, num_wann, num_kpts, 3))
       allocate (AA_q_diag(num_wann, 3))
       allocate (S_o(num_bands, num_bands))
@@ -577,6 +629,8 @@ contains
         call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, AA_R_temp(:, :, :, idir), AA_R(:, :, :, idir))
       enddo
 
+      deallocate (AA_R_temp)
+
     endif !on_root
 
     call comms_bcast(AA_R(1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3, error, comm)
@@ -586,8 +640,6 @@ contains
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_stop('get_oper: get_AA_R', timer)
     return
-
-    deallocate (AA_R_temp)
 
 101 call set_error_file(error, 'Error: Problem opening input file '//trim(seedname)//'.mmn', comm)
     return
