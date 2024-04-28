@@ -580,6 +580,7 @@ contains
     endif !on_root
 
     call comms_bcast(AA_R(1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3, error, comm)
+    call comms_bcast(wigner_seitz%wannier_centres_from_AA_R(1, 1), num_wann*3, error, comm)
     if (allocated(error)) return
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
