@@ -809,7 +809,7 @@ contains
 
   subroutine w90_create_kmesh(common_data, istdout, istderr, ierr)
     use w90_error_base, only: w90_error_type
-    use w90_kmesh, only: kmesh_get
+    use w90_kmesh, only: kmesh_get, kmesh_sort
 
     implicit none
 
@@ -826,6 +826,11 @@ contains
     call kmesh_get(common_data%kmesh_input, common_data%kmesh_info, common_data%print_output, &
                    common_data%kpt_latt, common_data%real_lattice, common_data%num_kpts, &
                    common_data%gamma_only, istdout, common_data%timer, error, common_data%comm)
+
+    if (.NOT. common_data%gamma_only) then
+      call kmesh_sort(common_data%kmesh_info, common_data%num_kpts, error, common_data%comm)
+    endif
+
     if (allocated(error)) then
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return

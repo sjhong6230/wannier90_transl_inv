@@ -68,6 +68,12 @@ program = WANNIER90_WOUT_OK
 inputs_args = ('silicon.win', '')
 output = silicon.wout
 
+# Silicon, Stengel-Spaldin functional
+[testw90_example34_2/]
+program = WANNIER90_WOUT_OK
+inputs_args = ('silicon.win', '')
+output = silicon.wout
+
 # Test for the nnkpt file
 [testw90_nnkpt1/]
 program = WANNIER90_NNKP_OK

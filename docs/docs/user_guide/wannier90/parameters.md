@@ -151,6 +151,7 @@ physical value, L for a logical value and S for a text string.
 |   num_print_cycles    |  I   | Control frequency of printing                                                                                    |
 |      write_r2mn       |  L   | Write matrix elements of $r^2$ between WF to file                                                                |
 |    guiding_centres    |  L   | Use guiding centres                                                                                              |
+|    use_ss_functional    |  L   | If `true`, use Stengel-Spaldin functional and if `false`, use Marzari-Vanderbilt functional                                                                                              |
 |   num_guide_cycles    |  I   | Frequency of guiding centres                                                                                     |
 |   num_no_guide_iter   |  I   | The number of iterations after which guiding centres are used                                                    |
 |     trial_step \*     |  R   | The trial step length for the parabolic line search during the minimisation of $\Omega$                          |
@@ -943,6 +944,19 @@ Experience shows that with `guiding_centres` set to true this problem is
 avoided and doing so does not cause any problems. For this reason we
 recommend setting `guiding_centres` to `true` where possible (it is only
 not possible if an explicit projection block is not defined).
+
+The default value is `false`.
+
+### `logical :: use_ss_functional`
+
+If `true`, use Stengel-Spaldin spread functional and if `false`,
+use Marzari-Vanderbilt spread functional.
+
+Both functionals converge to the same behavior if infinitely fine grid is used.
+Both of them are translationally invariant,
+but only Stengel-Spaldin functional is size consistent.
+
+For more information, refer to Phys. Rev. B 73, 075121.
 
 The default value is `false`.
 
