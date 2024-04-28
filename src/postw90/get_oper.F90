@@ -475,6 +475,9 @@ contains
       allocate (S(num_wann, num_wann))
 
       allocate (num_states(num_kpts))
+
+      wigner_seitz%wannier_centres_from_AA_R(:, :) = 0.d0
+
       do ik = 1, num_kpts
         if (have_disentangled) then
           num_states(ik) = dis_manifold%ndimwin(ik)
@@ -562,6 +565,14 @@ contains
                                       num_states(kmesh_info%nnlist(ik, nn)), S_o, &
                                       have_disentangled, S)
 
+        ! save the wannier centers (diagonals of AA_R_temp) to wannier_centres_from_AA_R
+        ! used in pw90common_fourier_R_to_k_new_second_d_TB_conv
+        do i = 1, num_wann
+          wigner_seitz%wannier_centres_from_AA_R(:, i) = &
+            wigner_seitz%wannier_centres_from_AA_R(:, i) &
+            - kmesh_info%wb(nn)*kmesh_info%bk(:, nn, ik)*aimag(log(S(i, i)))/num_kpts
+        enddo
+
         ! Berry connection matrix
         ! Assuming all neighbors of a given point are read in sequence!
         !
@@ -609,20 +620,6 @@ contains
       call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, AA_q(:, :, :, 1), AA_R_temp(:, :, :, 1))
       call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, AA_q(:, :, :, 2), AA_R_temp(:, :, :, 2))
       call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, AA_q(:, :, :, 3), AA_R_temp(:, :, :, 3))
-
-      ! save the wannier centers (diagonals of AA_R_temp) to wannier_centres_from_AA_R
-      ! used in pw90common_fourier_R_to_k_new_second_d_TB_conv
-      wigner_seitz%wannier_centres_from_AA_R(:, :) = 0.d0
-      do j = 1, num_wann
-        do ir = 1, wigner_seitz%nrpts
-          if ((wigner_seitz%irvec(1, ir) .eq. 0) .and. (wigner_seitz%irvec(2, ir) .eq. 0) &
-              .and. (wigner_seitz%irvec(3, ir) .eq. 0)) then
-            wigner_seitz%wannier_centres_from_AA_R(1, j) = real(AA_R_temp(j, j, ir, 1))
-            wigner_seitz%wannier_centres_from_AA_R(2, j) = real(AA_R_temp(j, j, ir, 2))
-            wigner_seitz%wannier_centres_from_AA_R(3, j) = real(AA_R_temp(j, j, ir, 3))
-          endif
-        enddo
-      enddo
 
       ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
       do idir = 1, 3
