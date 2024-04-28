@@ -838,6 +838,9 @@ contains
     call w90_readwrite_get_keyword(settings, 'transl_inv', found, error, comm, &
                                    l_value=pw90_berry%transl_inv)
     if (allocated(error)) return
+    call w90_readwrite_get_keyword(settings, 'transl_inv_full', found, error, comm, &
+                                   l_value=pw90_berry%transl_inv_full)
+    if (allocated(error)) return
 
     call w90_readwrite_get_keyword(settings, 'berry_task', found, error, comm, &
                                    c_value=pw90_berry%task)
