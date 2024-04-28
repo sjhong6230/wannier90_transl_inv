@@ -322,7 +322,7 @@ contains
 
     ! local variables
     complex(kind=dp), allocatable :: AA_q(:, :, :, :)
-    complex(kind=dp), allocatable :: AA_q_diag(:, :, :)
+    complex(kind=dp), allocatable :: AA_q_diag(:, :)
     complex(kind=dp), allocatable :: S_o(:, :)
     complex(kind=dp), allocatable :: S(:, :)
     integer                       :: n, m, i, j, &
@@ -418,7 +418,7 @@ contains
     if (on_root) then
 
       allocate (AA_q(num_wann, num_wann, num_kpts, 3))
-      allocate (AA_q_diag(num_wann, num_kpts, 3))
+      allocate (AA_q_diag(num_wann, 3))
       allocate (S_o(num_bands, num_bands))
       allocate (S(num_wann, num_wann))
 
@@ -513,7 +513,7 @@ contains
         ! Berry connection matrix
         ! Assuming all neighbors of a given point are read in sequence!
         !
-        if (pw90_berry%transl_inv .and. ik .ne. ik_prev) AA_q_diag(:, :, :) = cmplx_0
+        if (pw90_berry%transl_inv .and. ik .ne. ik_prev) AA_q_diag(:, :) = cmplx_0
         do idir = 1, 3
           AA_q(:, :, ik, idir) = AA_q(:, :, ik, idir) &
                                  + cmplx_i*kmesh_info%wb(nn)*kmesh_info%bk(idir, nn, ik)*S(:, :)
@@ -522,9 +522,9 @@ contains
             ! Rewrite band-diagonal elements a la Eq.(31) of MV97
             !
             do i = 1, num_wann
-              AA_q_diag(i, ik, idir) = AA_q_diag(i, ik, idir) &
-                                       - kmesh_info%wb(nn)*kmesh_info%bk(idir, nn, ik) &
-                                       *aimag(log(S(i, i)))
+              AA_q_diag(i, idir) = AA_q_diag(i, idir) &
+                                   - kmesh_info%wb(nn)*kmesh_info%bk(idir, nn, ik) &
+                                   *aimag(log(S(i, i)))
             enddo
           endif
         end do
@@ -533,7 +533,7 @@ contains
           do idir = 1, 3
             if (pw90_berry%transl_inv) then
               do n = 1, num_wann
-                AA_q(n, n, ik, idir) = AA_q_diag(n, ik, idir)
+                AA_q(n, n, ik, idir) = AA_q_diag(n, idir)
               enddo
             endif
             !
@@ -562,7 +562,14 @@ contains
       ! used in pw90common_fourier_R_to_k_new_second_d_TB_conv
       wigner_seitz%wannier_centres_from_AA_R(:, :) = 0.d0
       do j = 1, num_wann
-        wigner_seitz%wannier_centres_from_AA_R(:, j) = real(sum(AA_q(j, j, :, :), 1))/real(num_kpts, dp)
+        do ir = 1, wigner_seitz%nrpts
+          if ((wigner_seitz%irvec(1, ir) .eq. 0) .and. (wigner_seitz%irvec(2, ir) .eq. 0) &
+              .and. (wigner_seitz%irvec(3, ir) .eq. 0)) then
+            wigner_seitz%wannier_centres_from_AA_R(1, j) = real(AA_R_temp(j, j, ir, 1))
+            wigner_seitz%wannier_centres_from_AA_R(2, j) = real(AA_R_temp(j, j, ir, 2))
+            wigner_seitz%wannier_centres_from_AA_R(3, j) = real(AA_R_temp(j, j, ir, 3))
+          endif
+        enddo
       enddo
 
       ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
