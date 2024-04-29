@@ -441,6 +441,7 @@ contains
     integer, allocatable          :: num_states(:)
     real(kind=dp)                 :: m_real, m_imag, rdum1_real, rdum1_imag, &
                                      rdum2_real, rdum2_imag, rdum3_real, rdum3_imag
+    complex(kind=dp)              :: phase
     logical                       :: nn_found
     character(len=60)             :: header
     logical :: on_root = .false.
@@ -602,15 +603,64 @@ contains
           endif
         enddo
 
+        if (pw90_berry%transl_inv_full) then
+          do nn = 1, kmesh_info%nntot
+            do ik = 1, num_kpts
+              do j = 1, num_wann
+                do i = 1, num_wann
+                  phase = exp(0.5_dp*cmplx_i* &
+                              dot_product(wigner_seitz%wannier_centres_from_AA_R(:, i), kmesh_info%bk(:, ik, nn)))
+                  phase = phase*exp(0.5_dp*cmplx_i* &
+                                    dot_product(wigner_seitz%wannier_centres_from_AA_R(:, j), kmesh_info%bk(:, ik, nn)))
+                  AA_q_b(i, j, ik, nn, :) = AA_q_b(i, j, ik, nn, :)*phase
+                enddo
+              enddo
+            enddo
+          enddo
+        endif
+
         ik_prev = ik
       enddo !ncount
 
       close (mmn_in)
 
       if (pw90_berry%transl_inv_full) then
+        do idir = 1, 3
+          do nn = 1, kmesh_info%nntot
+            call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, &
+                                AA_q_b(:, :, :, nn, idir), AA_R_b_temp(:, :, :, nn, idir))
+          enddo
+        enddo
+
+        ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
+        do idir = 1, 3
+          do nn = 1, kmesh_info%nntot
+            call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
+                                       AA_R_b_temp(:, :, :, nn, idir), AA_R_b(:, :, :, nn, idir))
+          enddo
+        enddo
+
+        do nn = 1, kmesh_info%nntot
+          do ir = 1, wigner_seitz%nrpts_pw90
+            phase = exp(-0.5_dp*cmplx_i* &
+                        dot_product(wigner_seitz%crvec_pw90(:, ir), kmesh_info%bk(:, 1, nn)))
+            AA_R_b(:, :, ir, nn, :) = AA_R_b(:, :, ir, nn, :)*phase
+          enddo
+        enddo
+
+        AA_R = sum(AA_R_b, 4)
+
+        do ir = 1, wigner_seitz%nrpts_pw90
+          do i = 1, num_wann
+            if ((wigner_seitz%irvec_pw90(1, ir) .eq. 0) .and. &
+                (wigner_seitz%irvec_pw90(2, ir) .eq. 0) .and. &
+                (wigner_seitz%irvec_pw90(3, ir) .eq. 0)) then
+              AA_R(i, i, ir, :) = wigner_seitz%wannier_centres_from_AA_R(:, i)
+            endif
+          enddo
+        enddo
       else
         AA_q_b(:, :, :, 1, :) = sum(AA_q_b, 4)
-
         !
         ! Since Eq.(44) WYSV06 does not preserve the Hermiticity of the
         ! Berry potential matrix, take Hermitean part (whether this
