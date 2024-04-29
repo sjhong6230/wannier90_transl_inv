@@ -1410,7 +1410,7 @@ contains
     real(kind=dp) :: bweight_temp, fact
     integer :: loop_order, num_of_eqs, num_of_eqs_prev, higher_order_n_local, shell_higher
 
-    if (.not. kmesh_input%higher_order_nearest_shells) then
+    if (kmesh_input%higher_order_nearest_shells) then
       higher_order_n_local = kmesh_input%higher_order_n
     else
       higher_order_n_local = 1 !find 1st-order b and weights first in this subroutine
