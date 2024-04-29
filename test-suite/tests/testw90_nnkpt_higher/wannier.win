@@ -1,5 +1,5 @@
 num_wann          =   18
-finite_diff_order  = 3
+higher_order_n    =   3
 
 begin unit_cell_cart
 bohr

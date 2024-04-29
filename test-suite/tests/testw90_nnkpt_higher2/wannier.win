@@ -1,7 +1,7 @@
 num_wann          =   18
-finite_diff_order  = 5
-higher_order_simple = true
-kmesh_tol = 0.00001
+higher_order_n  = 3
+higher_order_nearest_shells = .true.
+!kmesh_tol = 0.00001
 
 begin unit_cell_cart
 bohr

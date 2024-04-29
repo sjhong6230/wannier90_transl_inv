@@ -263,7 +263,11 @@ contains
     end if
 
     if (print_output%iprint > 0) then
-      write (stdout, '(1x,a)', advance='no') '| The following shells are used: '
+      if (kmesh_input%higher_order_nearest_shells) then
+        write (stdout, '(1x,a)', advance='no') '| The following shells are used: '
+      else
+        write (stdout, '(1x,a)', advance='no') '| The following shells and their multiples are used: '
+      endif
       do ndnn = 1, kmesh_input%num_shells
         if (ndnn .eq. kmesh_input%num_shells) then
           write (stdout, '(i3,1x)', advance='no') kmesh_input%shell_list(ndnn)
@@ -271,9 +275,12 @@ contains
           write (stdout, '(i3,",")', advance='no') kmesh_input%shell_list(ndnn)
         endif
       enddo
-      do l = 1, 11 - kmesh_input%num_shells
+      do l = 1, 6 - kmesh_input%num_shells
         write (stdout, '(4x)', advance='no')
       enddo
+      if (kmesh_input%higher_order_nearest_shells) then
+        write (stdout, '(20x)', advance='no')
+      endif
       write (stdout, '("|")')
     endif
     !end if
@@ -545,7 +552,13 @@ contains
 
     do ndnnx = 1, kmesh_input%num_shells
       ndnn = kmesh_input%shell_list(ndnnx)
-      if (print_output%iprint > 0) write (stdout, '(1x,a,24x,i3,13x,i3,33x,a)') '|', ndnn, nnshell(1, ndnn), '|'
+      if (print_output%iprint > 0) then
+        if (ndnn > 1 .and. .not. kmesh_input%higher_order_nearest_shells) then
+          write (stdout, '(1x,a,22x,i3,a,13x,i3,33x,a)') '|', ndnn, 'x1', nnshell(1, ndnn), '|'
+        else
+          write (stdout, '(1x,a,24x,i3,13x,i3,33x,a)') '|', ndnn, nnshell(1, ndnn), '|'
+        endif
+      endif
     end do
     if (print_output%iprint > 0) write (stdout, '(1x,"+",76("-"),"+")')
 
