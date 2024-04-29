@@ -709,23 +709,25 @@ contains
       call set_error_input(error, 'Error: search_supcell_size must be positive', comm)
       return
     endif
-    call w90_readwrite_get_keyword(settings, 'finite_diff_order', found, error, comm, &
-                                   i_value=kmesh_input%finite_diff_order)
+    call w90_readwrite_get_keyword(settings, 'higher_order_n', found, error, comm, &
+                                   i_value=kmesh_input%higher_order_n)
     if (allocated(error)) return
-    if (kmesh_input%finite_diff_order < 0) then
-      call set_error_input(error, 'Error: finite_diff_order must be positive', comm)
+    if (kmesh_input%higher_order_n < 0) then
+      call set_error_input(error, 'Error: higher_order_n must be positive', comm)
       return
     endif
 
-    n = kmesh_input%finite_diff_order
+    n = kmesh_input%higher_order_n
     kmesh_input%max_shells_h = n*(4*n**2 + 15*n + 17)/6
     kmesh_input%max_shells_aux = kmesh_input%max_shells_h
     kmesh_input%num_nnmax_h = 2*kmesh_input%max_shells_h
 
-    call w90_readwrite_get_keyword(settings, 'higher_order_simple', found, error, comm, &
-                                   l_value=kmesh_input%higher_order_simple)
+    call w90_readwrite_get_keyword(settings, 'higher_order_nearest_shells', found, error, comm, &
+                                   l_value=kmesh_input%higher_order_nearest_shells)
     if (allocated(error)) return
-    if (kmesh_input%higher_order_simple) kmesh_input%max_shells_aux = 6
+    if (.not. kmesh_input%higher_order_nearest_shells) then
+      kmesh_input%max_shells_aux = 6
+    endif
 
     call w90_readwrite_get_keyword(settings, 'kmesh_tol', found, error, comm, &
                                    r_value=kmesh_input%tol)
@@ -970,11 +972,11 @@ contains
     call w90_readwrite_get_keyword(settings, 'fermi_surface_num_points', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'fermi_surface_plot_format', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'fermi_surface_plot', found, error, comm)
-    call w90_readwrite_get_keyword(settings, 'finite_diff_order', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'fixed_step', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'gamma_only', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'guiding_centres', found, error, comm)
-    call w90_readwrite_get_keyword(settings, 'higher_order_simple', found, error, comm)
+    call w90_readwrite_get_keyword(settings, 'higher_order_n', found, error, comm)
+    call w90_readwrite_get_keyword(settings, 'higher_order_nearest_shells', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'hr_cutoff', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'hr_plot', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'iprint', found, error, comm)

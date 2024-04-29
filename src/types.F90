@@ -121,12 +121,12 @@ module w90_types
     !!==================================================
     integer :: num_shells = 0
     !! no longer an input keyword
+    !! higher-order finite difference
     integer :: max_shells_h ! \sum ((3, 2i)) (combination with rep.) = n(4n*2 + 15n + 17)/6
     integer :: max_shells_aux ! = 6 for higher-order simple algorithm, n(4n*2 + 15n + 17)/6 for search algorithm
     integer :: num_nnmax_h ! 2*n(4n*2 + 15n + 17)/6
-    integer :: finite_diff_order = 1
-    !! Higher-order of finite-difference formulas
-    logical :: higher_order_simple = .true.
+    integer :: higher_order_n = 1
+    logical :: higher_order_nearest_shells = .false. ! experimental feature
     !! A simpler algorithm of determining bvectors
     logical :: skip_B1_tests = .false.
     !! do not check the B1 condition
