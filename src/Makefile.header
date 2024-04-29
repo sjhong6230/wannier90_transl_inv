@@ -14,6 +14,7 @@ OBJS_POST  = ws_distance.o types.o kmesh.o io.o comms.o utility.o get_oper.o con
 	error.o error_base.o
 
 LIBRARYV2 = ../../libwan2.a
+LIBRARYV2EXTRA = ../../libwan2-extra.a
 
 ## Dynamic library section
 ## Define some defaults (good for linux) if none is defined in the make.inc
@@ -23,7 +24,8 @@ LIBRARYV2 = ../../libwan2.a
 ## NOTE: if you want to compile the dynamic library, you have to compile
 ## everything with -fPIC usually, on 64bit systems
 DYNLIBRARYEXTENSION ?= so
-SHAREDLIBFLAGS ?= '-shared'
+SHAREDLIBFLAGS ?=-shared -fPIC
 
 ## Define the filename
 DYNLIBRARY = ../../libwannier.$(DYNLIBRARYEXTENSION)
+DYNLIBRARYEXTRA = ../../libwannier-extra.$(DYNLIBRARYEXTENSION)

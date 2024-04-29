@@ -1,3 +1,53 @@
+!-*- mode: F90 -*-!
+!------------------------------------------------------------!
+!                                                            !
+!                       WANNIER90                            !
+!                                                            !
+!          The Maximally-Localised Generalised               !
+!                 Wannier Functions Code                     !
+!                                                            !
+! Please cite                                                !
+!                                                            !
+!  [ref] "Wannier90 as a community code:                     !
+!        new features and applications",                     !
+!        G. Pizzi et al.,  J. Phys. Cond. Matt. 32,          !
+!        165902 (2020).                                      !
+!        http://doi.org/10.1088/1361-648X/ab51ff             !
+!                                                            !
+! in any publications arising from the use of this code.     !
+!                                                            !
+! Wannier90 is based on Wannier77, written by N. Marzari,    !
+! I. Souza and D. Vanderbilt. For the method please cite     !
+!                                                            !
+! [ref] N. Marzari and D. Vanderbilt,                        !
+!       Phys. Rev. B 56 12847 (1997)                         !
+!       http://dx.doi.org/10.1103/PhysRevB.56.12847          !
+!                                                            !
+! [ref] I. Souza, N. Marzari and D. Vanderbilt,              !
+!       Phys. Rev. B 65 035109 (2001)                        !
+!       http://dx.doi.org/10.1103/PhysRevB.65.035109         !
+!                                                            !
+! [ref] N. Marzari, A. A. Mostofi, J. R. Yates, I. Souza,    !
+!       D. Vanderbilt, "Maximally localized Wannier          !
+!       functions: theory and applications",                 !
+!       Rev. Mod. Phys. 84, 1419 (2012)                      !
+!       http://dx.doi.org/10.1103/RevModPhys.84.1419         !
+!                                                            !
+! For a full list of authors and contributors, please        !
+! see the README file in the root directory of the           !
+! distribution.                                              !
+!                                                            !
+! This file is distributed as part of the Wannier90 code and !
+! under the terms of the GNU General Public License. See the !
+! file `LICENSE' in the root directory of the Wannier90      !
+! distribution, or http://www.gnu.org/copyleft/gpl.txt       !
+!                                                            !
+! The webpage of the Wannier90 code is www.wannier.org       !
+!                                                            !
+! The Wannier90 code is hosted on GitHub:                    !
+!                                                            !
+! https://github.com/wannier-developers/wannier90            !
+!------------------------------------------------------------!
 
 module w90_library
 

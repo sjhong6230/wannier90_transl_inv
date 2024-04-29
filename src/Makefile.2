@@ -46,12 +46,15 @@ w90spn2spn: ../../w90spn2spn.x
 ../../w90spn2spn.x: $(OBJS) ../w90spn2spn.F90
 	$(COMPILER) $(POSTOPTS) $(FCOPTS) ../w90spn2spn.F90 $(LDOPTS) $(OBJS) $(LIBS) -o ../../w90spn2spn.x
 
-../../wannier90.x: $(LIBRARYV2) ../wannier_prog.F90
-	$(COMPILER) $(POSTOPTS) $(FCOPTS) ../wannier_prog.F90 $(LDOPTS) $(LIBRARYV2) $(LIBS) -o ../../wannier90.x
+../../wannier90.x: $(LIBRARYV2) $(LIBRARYV2EXTRA) ../wannier_prog.F90
+	$(COMPILER) $(POSTOPTS) $(FCOPTS) ../wannier_prog.F90 $(LDOPTS) $(LIBRARYV2) $(LIBRARYV2EXTRA) $(LIBS) -o ../../wannier90.x
 
 $(LIBRARYV2): $(OBJS)
 	$(AR) $(ARFLAGS) $(LIBRARYV2) $(OBJS)
 
+$(LIBRARYV2EXTRA): library_extra.o 
+	$(AR) $(ARFLAGS) $(LIBRARYV2EXTRA) library_extra.o
+        
 post: POSTOPTS = $(TEMP1)
 post: COMPILER = $(TEMP2)
 post: mpi_test ../../postw90.x
@@ -81,14 +84,18 @@ endif
 
 libs: $(LIBRARY) $(LIBRARYV2)
 
-dynlibs: $(DYNLIBRARY)
+dynlibs: $(DYNLIBRARY) $(DYNLIBRARYEXTRA)
 
 $(LIBRARY): $(OBJS) $(OBJS_LIBV1)
 	$(AR) $(ARFLAGS) $(LIBRARY) $(OBJS) $(OBJS_LIBV1)
 
-$(DYNLIBRARY): $(OBJS) $(OBJS) $(OBJS_LIBV1)
-	echo $(COMPILER)
-	$(COMPILER) $(SHAREDLIBFLAGS) $(POSTOPTS) $(LDOPTS) $(OBJS) $(OBJS_LIBV1) $(LIBS) -o $@
+$(DYNLIBRARY): $(OBJS)
+	$(COMPILER) $(SHAREDLIBFLAGS) $(POSTOPTS) $(LDOPTS) $(OBJS) -o $@
+
+$(DYNLIBRARYEXTRA): library_extra.o 
+	$(COMPILER) $(SHAREDLIBFLAGS) $(POSTOPTS) $(LDOPTS) $(OBJS) -o $@
+
+
 
 clean:
 	rm -f *.o *.mod *.MOD *.obj
@@ -97,6 +104,9 @@ library_interface.o : ../library_interface.F90 \
 	comms.o constants.o error_base.o io.o kmesh.o overlap.o plot.o transport.o \
 	types.o wannier90_readwrite.o wannier90_types.o wannierise.o
 	 $(COMPILER) $(POSTOPTS) $(FCOPTS) -c ../library_interface.F90
+
+library_extra.o : ../library_extra.F90
+	 $(COMPILER) $(POSTOPTS) $(FCOPTS) -c ../library_extra.F90
 
 c_interface.o : ../c_interface.F90 \
 	library_interface.o comms.o constants.o error_base.o io.o kmesh.o overlap.o plot.o transport.o \
