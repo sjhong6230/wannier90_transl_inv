@@ -1408,12 +1408,12 @@ contains
     integer, dimension(:, :), allocatable :: num_x, num_y, num_z
     logical :: bsat
     real(kind=dp) :: bweight_temp, fact
-    integer :: loop_order, num_of_eqs, num_of_eqs_prev, finite_diff_order_local, shell_higher
+    integer :: loop_order, num_of_eqs, num_of_eqs_prev, higher_order_n_local, shell_higher
 
-    if (kmesh_input%higher_order_simple) then
-      finite_diff_order_local = 1 !simple algorithm -> find 1st-order b and weights first in this subroutine
+    if (.not. kmesh_input%higher_order_nearest_shells) then
+      higher_order_n_local = kmesh_input%higher_order_n
     else
-      finite_diff_order_local = kmesh_input%finite_diff_order
+      higher_order_n_local = 1 !find 1st-order b and weights first in this subroutine
     endif
     target = 0.0_dp; target(1) = 1.0_dp; target(3) = 1.0_dp; target(6) = 1.0_dp
 
