@@ -283,9 +283,9 @@ contains
       kmesh_info%nntot = kmesh_info%nntot + multi(kmesh_input%shell_list(loop_s))
     end do
 
-    if (kmesh_info%nntot > num_nnmax) then
+    if (kmesh_info%nntot > kmesh_input%num_nnmax_h) then
       if (print_output%iprint > 0) then
-        write (stdout, '(a,i2,a)') ' **WARNING: kmesh has found >', num_nnmax, ' nearest neighbours**'
+        write (stdout, '(a,i2,a)') ' **WARNING: kmesh has found >', kmesh_input%num_nnmax_h, ' nearest neighbours**'
         write (stdout, '(a)') ' '
         write (stdout, '(a)') ' This is probably caused by an error in your unit cell specification'
         write (stdout, '(a)') ' '
