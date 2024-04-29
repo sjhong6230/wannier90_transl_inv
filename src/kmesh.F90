@@ -606,16 +606,17 @@ contains
                          *(bk_local(2, nnx, nkp)**num_y(j))*(bk_local(3, nnx, nkp)**num_z(j))
               enddo
             enddo
-            if ((i .eq. j) .and. (abs(ddelta - 1.0_dp) .gt. kmesh_input%tol)) then
-              if (print_output%iprint > 0) write (stdout, '(1x,2i3,f12.8)') i, j, ddelta
-              call set_error_fatal(error, 'Eq. (B1) not satisfied in kmesh_get (1)', comm)
-              return
-            endif
-            if ((i .ne. j) .and. (abs(ddelta) .gt. kmesh_input%tol)) then
-              if (print_output%iprint > 0) write (stdout, '(1x,2i3,f12.8)') i, j, ddelta
-              call set_error_fatal(error, 'Eq. (B1) not satisfied in kmesh_get (2)', comm)
-              return
-            endif
+            if (i .eq. 1 .and. (j .eq. 1 .or. j .eq. 3 .or. j .eq. 6)) then
+              if (abs(ddelta - 1.0_dp) .gt. kmesh_input%tol) then
+                if (print_output%iprint > 0) write (stdout, '(1x,3i3,f12.8)') num_x(j), num_y(j), num_z(j), ddelta
+                call set_error_fatal(error, 'Eq. (B1) not satisfied in kmesh_get (1)', comm)
+              endif
+            else
+              if (abs(ddelta) .gt. kmesh_input%tol) then
+                if (print_output%iprint > 0) write (stdout, '(1x,3i3,f12.8)') num_x(j), num_y(j), num_z(j), ddelta
+                call set_error_fatal(error, 'Eq. (B1) not satisfied in kmesh_get (2)', comm)
+              endif
+            end if
           enddo
         enddo
       enddo
