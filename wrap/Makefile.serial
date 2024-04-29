@@ -41,7 +41,7 @@ OBJS  =  $(BUILD)/constants.o $(BUILD)/io.o $(BUILD)/utility.o \
 	$(BUILD)/wannierise.o $(BUILD)/plot.o $(BUILD)/transport.o \
 	$(BUILD)/sitesym.o $(BUILD)/comms.o $(BUILD)/wannier90_types.o \
 	$(BUILD)/wannier90_readwrite.o $(BUILD)/readwrite.o $(BUILD)/error.o \
-	$(BUILD)/error_base.o $(BUILD)/library_interface.o
+	$(BUILD)/error_base.o $(BUILD)/library_interface.o $(BUILD)/library_extra.o
 
 POST = $(BUILD)/postw90_types.o $(BUILD)/postw90_common.o \
 	$(BUILD)/postw90_readwrite.o $(BUILD)/spin.o $(BUILD)/kpath.o \
@@ -51,7 +51,8 @@ POST = $(BUILD)/postw90_types.o $(BUILD)/postw90_common.o \
 
 WRAPSRC = ../src/constants.F90 ../src/types.F90 ../src/wannier90_readwrite.F90 \
 	../src/wannier90_types.F90 ../src/comms.F90 ../src/library_interface.F90 \
-	../src/postw90/postw90_types.F90 ../src/postw90/pw90_library.F90
+	../src/library_extra.F90 ../src/postw90/postw90_types.F90 \
+	../src/postw90/pw90_library.F90
 
 DYNLIBRARYEXTENSION ?= so
 SHAREDLIBFLAGS ?= -shared
@@ -143,6 +144,10 @@ $(BUILD)/sitesym.o : ../src/sitesym.F90 $(BUILD)/utility.o $(BUILD)/types.o \
 $(BUILD)/comms.o: ../src/comms.F90 $(BUILD)/constants.o $(BUILD)/error_base.o
 
 $(BUILD)/library_interface.o: ../src/library_interface.F90 $(BUILD)/constants.o \
+	$(BUILD)/error_base.o $(BUILD)/types.o $(BUILD)/wannier90_types.o \
+	$(BUILD)/wannier90_readwrite.o $(BUILD)/comms.o
+
+$(BUILD)/library_extra.o: ../src/library_extra.F90 $(BUILD)/constants.o \
 	$(BUILD)/error_base.o $(BUILD)/types.o $(BUILD)/wannier90_types.o \
 	$(BUILD)/wannier90_readwrite.o $(BUILD)/comms.o
 

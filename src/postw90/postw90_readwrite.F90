@@ -131,7 +131,7 @@ contains
     real(kind=dp), allocatable, intent(inout) :: fermi_energy_list(:)
     real(kind=dp), allocatable, intent(inout) :: kpt_latt(:, :)
 
-    character(len=50), intent(in)  :: seedname
+    character(len=*), intent(in)  :: seedname
 
     logical, intent(inout) :: eig_found
     logical, intent(inout) :: gamma_only
