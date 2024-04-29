@@ -85,15 +85,15 @@ endif
 
 libs: $(LIBRARY) $(LIBRARYV2)
 
-dynlibs: $(DYNLIBRARY) $(DYNLIBRARYEXTRA)
+dynlibs: ../../$(DYNLIBRARY) ../../$(DYNLIBRARYEXTRA)
 
 $(LIBRARY): $(OBJS) $(OBJS_LIBV1)
 	$(AR) $(ARFLAGS) $(LIBRARY) $(OBJS) $(OBJS_LIBV1)
 
-$(DYNLIBRARY): $(OBJS)
+../../$(DYNLIBRARY): $(OBJS)
 	$(COMPILER) $(SHAREDLIBFLAGS) $(POSTOPTS) $(LDOPTS) $(OBJS) -o $@
 
-$(DYNLIBRARYEXTRA): library_extra.o 
+../../$(DYNLIBRARYEXTRA): library_extra.o 
 	$(COMPILER) $(SHAREDLIBFLAGS) $(POSTOPTS) $(LDOPTS) $(OBJS) -o $@
 
 

@@ -13,6 +13,11 @@ OBJS_POST  = ws_distance.o types.o kmesh.o io.o comms.o utility.o get_oper.o con
         boltzwann.o geninterp.o postw90_types.o postw90_readwrite.o readwrite.o \
 	error.o error_base.o
 
+WRAPSRC = ../src/constants.F90 ../src/types.F90 ../src/wannier90_readwrite.F90 \
+        ../src/wannier90_types.F90 ../src/comms.F90 ../src/library_interface.F90 \
+        ../src/library_extra.F90
+#	../src/postw90/postw90_types.F90../src/postw90/pw90_library.F90
+
 LIBRARYV2 = ../../libwan2.a
 LIBRARYV2EXTRA = ../../libwan2-extra.a
 
@@ -27,5 +32,5 @@ DYNLIBRARYEXTENSION ?= so
 SHAREDLIBFLAGS ?=-shared -fPIC
 
 ## Define the filename
-DYNLIBRARY = ../../libwannier_$(COMMS).$(DYNLIBRARYEXTENSION)
-DYNLIBRARYEXTRA = ../../libwannier-extra_$(COMMS).$(DYNLIBRARYEXTENSION)
+DYNLIBRARY = libwannier_$(COMMS).$(DYNLIBRARYEXTENSION)
+DYNLIBRARYEXTRA = libwannier-extra_$(COMMS).$(DYNLIBRARYEXTENSION)

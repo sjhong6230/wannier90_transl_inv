@@ -54,6 +54,9 @@ w90pov:
 w90vdw:
 	(cd $(ROOTDIR)/utility/w90vdw && $(MAKE) )
 
+w90py: dynlib
+	(cd $(ROOTDIR)/wrap && $(MAKE) )
+
 libs: lib
 
 PKGCONFIG_FILENAME = wannier.pc
