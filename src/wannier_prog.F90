@@ -103,7 +103,7 @@ program wannier
   ! setup pplel decomp
   call mpi_comm_rank(mpi_comm_world, rank, ierr) ! the type of comm_world depends on interface used
   call mpi_comm_size(mpi_comm_world, mpisize, ierr)
-  call set_parallel_comms(common_data, mpi_comm_world)
+  call w90_set_comm(common_data, mpi_comm_world)
 #else
   rank = 0
   mpisize = 1

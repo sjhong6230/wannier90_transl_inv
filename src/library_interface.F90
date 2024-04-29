@@ -164,6 +164,7 @@ module w90_library
   public :: w90_input_setopt ! set options specified by set_option
   public :: w90_plot ! plot functions
   public :: w90_project_overlap ! transform overlaps and initial projections
+  public :: w90_set_comm ! setup MPI communicator in parallel case
   public :: w90_set_constant_bohr_to_ang ! set value of angstrom
   public :: w90_set_eigval ! set (pointer to) eigenvalues
   public :: w90_set_m_local ! set (pointer to) m (decomposed)
@@ -208,12 +209,16 @@ contains
     open (newunit=output, file=name, form='formatted', status='unknown')
   end subroutine w90_get_fortran_file
 
-  subroutine w90_input_setopt(common_data, seedname, comm, istdout, istderr, ierr)
+  subroutine w90_input_setopt(common_data, seedname, istdout, istderr, ierr)
 #ifdef MPI08
     use mpi_f08
 #endif
+#ifdef MPI90
+    use mpi
+#endif
     use w90_error_base, only: w90_error_type
     use w90_error, only: set_error_alloc, set_error_dealloc, set_error_fatal
+    use w90_comms, only: w90_comm_type
     use w90_kmesh, only: kmesh_get
     use w90_wannier90_readwrite, only: w90_wannier90_readwrite_read, &
       w90_wannier90_readwrite_read_special, w90_extra_io_type
@@ -225,18 +230,25 @@ contains
     integer, intent(in) :: istdout, istderr
     integer, intent(out) :: ierr
     type(lib_common_type), intent(inout) :: common_data
-#ifdef MPI08
-    type(mpi_comm), intent(in) :: comm
-#else
-    integer, intent(in) :: comm
-#endif
 
     ! local variables
     type(w90_error_type), allocatable :: error
     type(w90_extra_io_type) :: io_params
     logical :: cp_pp, disentanglement
+    type(w90_comm_type) :: emergencycomm
 
     ierr = 0
+
+    if (common_data%comm%comm == MPI_COMM_NULL) then
+      ! this is a problem: how do we exit using the parallel error handler when the communicator is unknown?
+      ! here: just abuse "comm_world" and hope for the best? -JJ Apr 24
+      emergencycomm%comm = MPI_COMM_SELF
+      call set_error_fatal(error, &
+                           ' Parallel Wannier90 library invoked with invalid communicator, exiting.  Use w90_set_comm().', &
+                           emergencycomm)
+      call prterr(error, ierr, istdout, istderr, emergencycomm)
+      return
+    endif
 
     if (allocated(common_data%settings%in_data)) then
       call set_error_fatal(error, ' readinput and setopt clash at input_setopt call', common_data%comm)
@@ -248,7 +260,6 @@ contains
       return
     endif
 
-    common_data%comm%comm = comm ! set communicator
     common_data%seedname = seedname ! set seedname for input/output files
 
     call w90_wannier90_readwrite_read_special(common_data%settings, common_data%atom_data, &
@@ -1078,5 +1089,19 @@ contains
       !if (present(zona)) zona(ip) = proj%zona
     enddo
   end subroutine w90_get_proj
+
+  subroutine w90_set_comm(common_data, comm)
+#ifdef MPI08
+    use mpi_f08
+#endif
+    implicit none
+    type(lib_common_type), intent(inout) :: common_data
+#ifdef MPI08
+    type(mpi_comm), intent(in) :: comm
+#else
+    integer, intent(in) :: comm
+#endif
+    common_data%comm%comm = comm
+  end subroutine w90_set_comm
 
 end module w90_library

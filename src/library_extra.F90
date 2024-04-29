@@ -534,20 +534,6 @@ contains
     if (common_data%print_output%iprint > 0) call io_print_timings(common_data%timer, istdout)
   end subroutine print_times
 
-  subroutine set_parallel_comms(common_data, comm)
-#ifdef MPI08
-    use mpi_f08
-#endif
-    implicit none
-    type(lib_common_type), intent(inout) :: common_data
-#ifdef MPI08
-    type(mpi_comm), intent(in) :: comm
-#else
-    integer, intent(in) :: comm
-#endif
-    common_data%comm%comm = comm
-  end subroutine set_parallel_comms
-
   subroutine set_kpoint_distribution(common_data, dist, istdout, istderr, ierr)
     use w90_error_base, only: w90_error_type
     use w90_error, only: set_error_fatal
