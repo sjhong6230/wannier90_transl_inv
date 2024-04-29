@@ -27,5 +27,5 @@ DYNLIBRARYEXTENSION ?= so
 SHAREDLIBFLAGS ?=-shared -fPIC
 
 ## Define the filename
-DYNLIBRARY = ../../libwannier.$(DYNLIBRARYEXTENSION)
-DYNLIBRARYEXTRA = ../../libwannier-extra.$(DYNLIBRARYEXTENSION)
+DYNLIBRARY = ../../libwannier_$(COMMS).$(DYNLIBRARYEXTENSION)
+DYNLIBRARYEXTRA = ../../libwannier-extra_$(COMMS).$(DYNLIBRARYEXTENSION)

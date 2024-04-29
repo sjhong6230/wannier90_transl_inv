@@ -4,16 +4,17 @@
 
 include ../../make.inc
 
-# Contains definition of OBJS, OBJS_POST, LIBRARY, DYNLIBRARY
-include ../Makefile.header
-
-POSTDIR = ../postw90/
-
+# Do this before Makefile.header so we can annotate dynlib with COMMS
 ifdef COMMS
 COMMS := $(strip $(COMMS))
 else
 COMMS = serial
 endif
+
+# Contains definition of OBJS, OBJS_POST, LIBRARY, DYNLIBRARY
+include ../Makefile.header
+
+POSTDIR = ../postw90/
 
 ifeq ($(COMMS),mpi08)
 TEMP1 = -DMPI -DMPI08
