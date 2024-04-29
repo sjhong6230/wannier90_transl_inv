@@ -578,8 +578,15 @@ contains
       do nkp = 1, num_kpts
         do i = 1, kmesh_input%higher_order_n
           if ((.not. kmesh_input%higher_order_nearest_shells) .and. i > 1) exit
-          do j = 1, (1 + i)*(1 + 2*i)
+          do j = 1, (1 + i)*(1 + 2*i) ! multiset coefficient ((3, 2i)) = (1 + i)*(1 + 2*i), 3: x,y,z, 2i: num. of b
             ! separate cartesian components
+            ! e.g. for i=1
+            ! j=1: num_x=2, num_y=0, num_z=0
+            ! j=2: num_x=1, num_y=1, num_z=0
+            ! j=3: num_x=0, num_y=2, num_z=0
+            ! j=4: num_x=1, num_y=0, num_z=1
+            ! j=5: num_x=0, num_y=1, num_z=1
+            ! j=6: num_x=0, num_y=0, num_z=2
             do l = 0, 2*i
               if ((2*i + 1)*l - l*(l - 1)/2 <= j - 1 &
                   .and. (2*i + 1)*(l + 1) - (l + 1)*l/2 > j - 1) then
