@@ -28,6 +28,8 @@ module w90_comms
 #  if !(defined(MPI08) || defined(MPI90) || defined(MPIH))
 #    error "You need to define which MPI interface you are using"
 #  endif
+#else
+#define MPI_COMM_NULL -1
 #endif
 
 #ifdef MPI08
@@ -62,6 +64,7 @@ module w90_comms
   public :: mpirank
   public :: mpisize
   public :: comms_sync_err
+  public :: valid_communicator ! test if communicator is initialised
 
   ! versions without error synchronisation, use at own risk
   public :: comms_no_sync_allreduce  ! reduce data onto all nodes
@@ -75,9 +78,9 @@ module w90_comms
 
   type, public :: w90_comm_type
 #ifdef MPI08
-    type(mpi_comm) :: comm ! f08 mpi interface
+    type(mpi_comm) :: comm = MPI_COMM_NULL ! f08 mpi interface
 #else
-    integer :: comm ! f90 mpi or no mpi
+    integer :: comm = MPI_COMM_NULL ! f90 mpi or no mpi
 #endif
   end type
 
@@ -218,6 +221,19 @@ module w90_comms
   end interface comms_no_sync_scatterv
 
 contains
+
+  logical function valid_communicator(comm)
+    type(w90_comm_type), intent(in) :: comm
+#ifdef MPI
+    if (comm%comm == MPI_COMM_NULL) then
+      valid_communicator = .false.
+    else
+      valid_communicator = .true.
+    endif
+#else
+    valid_communicator = .true.
+#endif
+  end function
 
   ! mpi rank function for convenience
   integer function mpirank(comm)

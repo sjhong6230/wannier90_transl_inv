@@ -217,8 +217,8 @@ contains
     use mpi
 #endif
     use w90_error_base, only: w90_error_type
-    use w90_error, only: set_error_alloc, set_error_dealloc, set_error_fatal
-    use w90_comms, only: w90_comm_type
+    use w90_error, only: set_error_alloc, set_error_dealloc, set_error_fatal, code_mpi
+    use w90_comms, only: w90_comm_type, valid_communicator
     use w90_kmesh, only: kmesh_get
     use w90_wannier90_readwrite, only: w90_wannier90_readwrite_read, &
       w90_wannier90_readwrite_read_special, w90_extra_io_type
@@ -235,18 +235,13 @@ contains
     type(w90_error_type), allocatable :: error
     type(w90_extra_io_type) :: io_params
     logical :: cp_pp, disentanglement
-    type(w90_comm_type) :: emergencycomm
 
     ierr = 0
 
-    if (common_data%comm%comm == MPI_COMM_NULL) then
+    if (.not. valid_communicator(common_data%comm)) then
       ! this is a problem: how do we exit using the parallel error handler when the communicator is unknown?
-      ! here: just abuse "comm_world" and hope for the best? -JJ Apr 24
-      emergencycomm%comm = MPI_COMM_SELF
-      call set_error_fatal(error, &
-                           ' Parallel Wannier90 library invoked with invalid communicator, exiting.  Use w90_set_comm().', &
-                           emergencycomm)
-      call prterr(error, ierr, istdout, istderr, emergencycomm)
+      write (istderr, *) ' Parallel Wannier90 library invoked with invalid communicator, exiting.  Use w90_set_comm()!'
+      ierr = code_mpi
       return
     endif
 
@@ -353,8 +348,9 @@ contains
   end subroutine w90_input_setopt
 
   subroutine w90_input_reader(common_data, istdout, istderr, ierr)
+    use w90_comms, only: valid_communicator
     use w90_error_base, only: w90_error_type
-    use w90_error, only: set_error_input, set_error_fatal, set_error_alloc
+    use w90_error, only: set_error_input, set_error_fatal, set_error_alloc, code_mpi
     use w90_readwrite, only: w90_readwrite_in_file, w90_readwrite_clean_infile
     use w90_wannier90_readwrite, only: w90_wannier90_readwrite_read, w90_extra_io_type
 
@@ -371,6 +367,13 @@ contains
     logical :: cp_pp
 
     ierr = 0
+
+    if (.not. valid_communicator(common_data%comm)) then
+      ! this is a problem: how do we exit using the parallel error handler when the communicator is unknown?
+      write (istderr, *) ' Parallel Wannier90 library invoked with invalid communicator, exiting.  Use w90_set_comm()!'
+      ierr = code_mpi
+      return
+    endif
 
     if (allocated(common_data%settings%entries)) then
       call set_error_fatal(error, &
