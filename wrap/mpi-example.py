@@ -12,8 +12,8 @@ ftn_error = wan90.w90_library.w90_get_fortran_stderr()
 data = wan90.w90_library.lib_common_type()
 #w90data = wan90.w90_library.lib_wannier_type()
 
-wan90.w90_library.w90_set_comms(data, MPI.COMM_WORLD.py2f())
-#data.comm.comm = MPI.COMM_WORLD.py2f()
+#wan90.w90_library.w90_set_comm(data, MPI.COMM_WORLD.py2f())
+data.comm.comm = MPI.COMM_WORLD.py2f()
 
 status = wan90.w90_library_extra.input_reader_special(data, "diamond", ftn_output, ftn_error)
 status = wan90.w90_library.w90_input_reader(data, ftn_output, ftn_error)
@@ -80,7 +80,7 @@ if data.num_wann == data.num_bands:
     status = wan90.w90_library.w90_project_overlap(data, ftn_output, ftn_error)
 else:
     eigval = numpy.zeros((data.num_bands, data.num_kpts), dtype=numpy.double, order='F')
-    status = wan90.w90_library.w90_read_eigvals(data, eigval, ftn_output, ftn_error)
+    status = wan90.w90_library_extra.read_eigvals(data, eigval, ftn_output, ftn_error)
     wan90.w90_library.w90_set_eigval(data, eigval)
     status = wan90.w90_library.w90_disentangle(data, ftn_output, ftn_error)
     if status == 1:
@@ -90,11 +90,11 @@ status = wan90.w90_library.w90_wannierise(data, ftn_output, ftn_error)
 
 #wan90.w90_library.w90_checkpoint(data, "postwann", ftn_output, ftn_error)
 
-#wan90.w90_library.w90_transport(helper, ftn_output, ftn_error, status)
-
 #print (data.num_wann)
 
-#wan90.w90_library.w90_plot(data, ftn_output, ftn_error, status)
+#wan90.w90_library.w90_plot(data, ftn_output, ftn_error)
+
+#wan90.w90_library.w90_transport(data, ftn_output, ftn_error)
 
 if my_proc == 0:
     wan90.w90_library_extra.print_times(data, ftn_output)

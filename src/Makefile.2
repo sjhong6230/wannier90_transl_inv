@@ -99,7 +99,7 @@ $(LIBRARY): $(OBJS) $(OBJS_LIBV1)
 
 
 clean:
-	rm -f *.o *.mod *.MOD *.obj
+	rm -f *.o *.mod *.MOD *.obj ../wrap/f90wrap_*
 
 library_interface.o : ../library_interface.F90 \
 	comms.o constants.o error_base.o io.o kmesh.o overlap.o plot.o transport.o \
