@@ -47,10 +47,10 @@ module w90_comms
 
   private
 
-  integer, parameter :: code_mpi = 4
+  integer, parameter :: code_mpi = 4 ! this is duplicated here to avoid circular dependency with error.F90
 
-  integer, parameter :: mpi_send_tag = 77 !arbitrary
-  integer, parameter :: root_id = 0 !not arbitrary
+  integer, parameter :: mpi_send_tag = 77 ! arbitrary
+  integer, parameter :: root_id = 0 ! not arbitrary
 
   public :: comms_allreduce  ! reduce data onto all nodes
   public :: comms_array_split
