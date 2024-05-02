@@ -271,6 +271,7 @@ contains
       do ndnn = 1, kmesh_input%num_shells
         if (ndnn .eq. kmesh_input%num_shells) then
           write (stdout, '(i3,1x)', advance='no') kmesh_input%shell_list(ndnn)
+          num_first_shells = kmesh_input%num_shells
         else
           write (stdout, '(i3,",")', advance='no') kmesh_input%shell_list(ndnn)
         endif
@@ -550,16 +551,29 @@ contains
 
     !end if
 
-    do ndnnx = 1, kmesh_input%num_shells
-      ndnn = kmesh_input%shell_list(ndnnx)
-      if (print_output%iprint > 0) then
-        if (ndnn > 1 .and. .not. kmesh_input%higher_order_nearest_shells) then
-          write (stdout, '(1x,a,22x,i3,a,13x,i3,33x,a)') '|', ndnn, 'x1', nnshell(1, ndnn), '|'
-        else
+    if (kmesh_input%higher_order_n .eq. 1 .or. kmesh_input%higher_order_nearest_shells) then
+      do ndnnx = 1, kmesh_input%num_shells
+        ndnn = kmesh_input%shell_list(ndnnx)
+        if (print_output%iprint > 0) then
+            write (stdout, '(1x,a,24x,i3,13x,i3,33x,a)') '|', ndnn, nnshell(1, ndnn), '|'
+        endif
+      end do
+    else
+      do ndnnx = 1, num_first_shells
+        ndnn = kmesh_input%shell_list(ndnnx)
+        if (print_output%iprint > 0) then
           write (stdout, '(1x,a,24x,i3,13x,i3,33x,a)') '|', ndnn, nnshell(1, ndnn), '|'
         endif
-      endif
-    end do
+      end do
+      do i = 2, kmesh_input%higher_order_n
+        do ndnnx = 1, num_first_shells
+          ndnn = kmesh_input%shell_list(ndnnx)
+          if (print_output%iprint > 0) then
+            write (stdout, '(1x,a,20x,i3,a,i2,13x,i3,33x,a)') '|', ndnn, ' x', ndnn, nnshell(1, ndnn), '|'
+          endif
+        end do
+      end do
+    endif
     if (print_output%iprint > 0) write (stdout, '(1x,"+",76("-"),"+")')
 
     do nkp = 1, num_kpts
