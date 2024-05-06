@@ -846,6 +846,9 @@ contains
       return
     endif
 
+    call w90_readwrite_get_keyword(settings, 'guiding_centres', found, error, comm, &
+                                   l_value=pw90_berry%guiding_centres)
+
     call w90_readwrite_get_keyword(settings, 'berry_task', found, error, comm, &
                                    c_value=pw90_berry%task)
     if (allocated(error)) return
@@ -1000,7 +1003,7 @@ contains
 
     character(len=*), intent(in) :: berry_task
 
-    logical :: found
+    logical :: found, transl_inv_full
 
     call w90_readwrite_get_keyword(settings, 'shc_freq_scan', found, error, comm, &
                                    l_value=pw90_spin_hall%freq_scan)
@@ -1071,6 +1074,14 @@ contains
         .and. index(pw90_spin_hall%method, 'ryoo') == 0) then
       call set_error_input(error, 'Error: value of shc_method not recognised in w90_wannier90_readwrite_read', comm)
       return
+    endif
+    if (index(pw90_spin_hall%method, 'qiao') > 0) then
+      call w90_readwrite_get_keyword(settings, 'transl_inv_full', found, error, comm, &
+                                     l_value=transl_inv_full)
+      if (transl_inv_full) then
+        call set_error_input(error, 'Error: transl_inv_full=T not implemented for shc_method=qiao', comm)
+        return
+      endif
     endif
 
   end subroutine w90_wannier90_readwrite_read_spin_hall

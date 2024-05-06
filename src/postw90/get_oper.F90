@@ -25,7 +25,8 @@ module w90_get_oper
   !! (e.g., quantum-espresso)
   !================================================
 
-  use w90_comms, only: comms_bcast, w90_comm_type, mpirank
+  use w90_comms, only: comms_bcast, comms_reduce, comms_array_split, comms_scatterv, &
+    w90_comm_type, mpirank, mpisize
   use w90_constants, only: dp, cmplx_0, cmplx_i, twopi
   use w90_io, only: io_stopwatch_start, io_stopwatch_stop
   use w90_error, only: w90_error_type, set_error_alloc, set_error_dealloc, set_error_fatal, &
@@ -385,7 +386,7 @@ contains
   end subroutine get_AA_R_effective
 
 !================================================
-  subroutine get_AA_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, AA_R, &
+  subroutine get_AA_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, wann_data, AA_R, &
                       v_matrix, eigval, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, &
                       num_wann, have_disentangled, seedname, stdout, timer, error, comm)
     !================================================
@@ -399,7 +400,7 @@ contains
     use w90_postw90_types, only: pw90_berry_mod_type, pw90_oper_read_type, pw90_spin_hall_type, &
       wigner_seitz_type
     use w90_types, only: dis_manifold_type, kmesh_info_type, print_output_type, timer_list_type, &
-      ws_distance_type, ws_region_type
+      ws_distance_type, ws_region_type, wannier_data_type
 
     implicit none
 
@@ -411,6 +412,7 @@ contains
     type(ws_distance_type), intent(in) :: ws_distance
     type(ws_region_type), intent(in) :: ws_region
     type(print_output_type), intent(in)   :: print_output
+    type(wannier_data_type), intent(in) :: wann_data
     type(timer_list_type), intent(inout) :: timer
     type(w90_comm_type), intent(in)         :: comm
     type(w90_error_type), allocatable, intent(out) :: error
@@ -422,7 +424,7 @@ contains
 
     complex(kind=dp), intent(in) :: v_matrix(:, :, :)
     complex(kind=dp), allocatable, intent(inout) :: AA_R(:, :, :, :) ! <0n|r|Rm>
-    complex(kind=dp), allocatable :: AA_R_b_temp(:, :, :, :, :)
+    complex(kind=dp), allocatable :: AA_R_temp(:, :, :)
     complex(kind=dp), allocatable :: AA_R_b(:, :, :, :, :)
 
     logical, intent(in) :: have_disentangled
@@ -430,18 +432,22 @@ contains
 
     ! local variables
     complex(kind=dp), allocatable :: AA_q_b(:, :, :, :, :)
+    complex(kind=dp), allocatable :: AA_q(:, :, :, :)
     complex(kind=dp), allocatable :: AA_q_b_diag(:, :, :)
+    complex(kind=dp), allocatable :: AA_q_loc(:, :, :)
     complex(kind=dp), allocatable :: S_o(:, :)
     complex(kind=dp), allocatable :: S(:, :)
     integer                       :: n, m, i, j, &
                                      ik, ik2, ik_prev, nn, inn, nnl, nnm, nnn, &
                                      idir, ncount, nn_count, mmn_in, &
                                      nb_tmp, nkp_tmp, nntot_tmp, file_unit, &
-                                     ir, io, ivdum(3), ivdum_old(3)
+                                     ir, io, w
     integer, allocatable          :: num_states(:)
+    integer, allocatable          :: counts(:), displs(:)
     real(kind=dp)                 :: m_real, m_imag, rdum1_real, rdum1_imag, &
                                      rdum2_real, rdum2_imag, rdum3_real, rdum3_imag
-    complex(kind=dp)              :: phase
+    real(kind=dp), allocatable    :: r0(:, :, :)
+    complex(kind=dp), allocatable :: phase1(:, :, :), phase2(:, :)
     logical                       :: nn_found
     character(len=60)             :: header
     logical :: on_root = .false.
@@ -470,12 +476,10 @@ contains
     ! Do everything on root, broadcast AA_R at the end (smaller than S_o)
     !
     if (on_root) then
-      allocate (AA_R_b_temp(num_wann, num_wann, wigner_seitz%nrpts, kmesh_info%nntot, 3))
-      allocate (AA_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, kmesh_info%nntot, 3))
-      allocate (AA_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3))
-      allocate (AA_q_b_diag(num_wann, kmesh_info%nntot, 3))
       allocate (S_o(num_bands, num_bands))
       allocate (S(num_wann, num_wann))
+      allocate (AA_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3))
+      allocate (AA_q_b_diag(num_wann, kmesh_info%nntot, 3))
 
       allocate (num_states(num_kpts))
 
@@ -603,65 +607,136 @@ contains
           endif
         enddo
 
-        if (pw90_berry%transl_inv_full) then
-          do nn = 1, kmesh_info%nntot
-            do ik = 1, num_kpts
-              do j = 1, num_wann
-                do i = 1, num_wann
-                  phase = exp(0.5_dp*cmplx_i* &
-                              dot_product(wigner_seitz%wannier_centres_from_AA_R(:, i), kmesh_info%bk(:, ik, nn)))
-                  phase = phase*exp(0.5_dp*cmplx_i* &
-                                    dot_product(wigner_seitz%wannier_centres_from_AA_R(:, j), kmesh_info%bk(:, ik, nn)))
-                  AA_q_b(i, j, ik, nn, :) = AA_q_b(i, j, ik, nn, :)*phase
-                enddo
-              enddo
-            enddo
-          enddo
-        endif
-
         ik_prev = ik
       enddo !ncount
 
       close (mmn_in)
 
-      if (pw90_berry%transl_inv_full) then
-        do idir = 1, 3
-          do nn = 1, kmesh_info%nntot
-            call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, &
-                                AA_q_b(:, :, :, nn, idir), AA_R_b_temp(:, :, :, nn, idir))
-          enddo
-        enddo
+      if (sum((wigner_seitz%wannier_centres_from_AA_R - wann_data%centres)**2) > 1.0e-08) then
+        if (pw90_berry%guiding_centres) then
+          write (stdout, '(/a)', advance='no') &
+            ' Computed and read Wannier centres different. This can happen for guiding_centres=T'
+          wigner_seitz%wannier_centres_from_AA_R = wann_data%centres
+        else
+          call set_error_fatal(error, 'Computed and read Wannier centres different.', comm)
+        endif
+      endif
 
-        ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
-        do idir = 1, 3
-          do nn = 1, kmesh_info%nntot
-            call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
-                                       AA_R_b_temp(:, :, :, nn, idir), AA_R_b(:, :, :, nn, idir))
+    endif !on_root
+
+    if (pw90_berry%transl_inv_full) then
+      if (on_root) then
+        allocate (r0(num_wann, num_wann, 3))
+        allocate (phase1(num_wann, num_wann, kmesh_info%nntot))
+        allocate (phase2(wigner_seitz%nrpts_pw90, kmesh_info%nntot))
+        allocate (AA_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, kmesh_info%nntot, 3))
+
+        do j = 1, num_wann
+          do i = 1, num_wann
+            r0(i, j, :) = (wigner_seitz%wannier_centres_from_AA_R(:, i) + &
+                           wigner_seitz%wannier_centres_from_AA_R(:, j))/2.0_dp
           enddo
         enddo
 
         do nn = 1, kmesh_info%nntot
-          do ir = 1, wigner_seitz%nrpts_pw90
-            phase = exp(-0.5_dp*cmplx_i* &
-                        dot_product(wigner_seitz%crvec_pw90(:, ir), kmesh_info%bk(:, 1, nn)))
-            AA_R_b(:, :, ir, nn, :) = AA_R_b(:, :, ir, nn, :)*phase
+          do j = 1, num_wann
+            do i = 1, num_wann
+              phase1(i, j, nn) = dot_product(r0(i, j, :), kmesh_info%bk(:, nn, 1))
+            enddo
           enddo
         enddo
 
-        AA_R = sum(AA_R_b, 4)
+        phase1 = exp(cmplx_i*phase1)
+
+        do idir = 1, 3
+          do ik = 1, num_kpts
+            AA_q_b(:, :, ik, :, idir) = AA_q_b(:, :, ik, :, idir)*phase1(:, :, :)
+          enddo
+        enddo
+
+        deallocate (phase1)
+      endif
+      !
+      allocate (counts(0:mpisize(comm) - 1))
+      allocate (displs(0:mpisize(comm) - 1))
+
+      w = num_wann*num_wann
+      call comms_array_split(num_kpts, counts, displs, comm)
+      allocate (AA_q_loc(num_wann, num_wann, counts(mpirank(comm))))
+      allocate (AA_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
+
+      do idir = 1, 3
+        do nn = 1, kmesh_info%nntot
+          call comms_scatterv(AA_q_loc, w*counts(mpirank(comm)), AA_q_b(:, :, :, nn, idir), w*counts, w*displs, error, comm)
+          call fourier_loc_q_to_R(num_kpts, counts, displs, mpirank(comm), wigner_seitz%nrpts, wigner_seitz%irvec, &
+                                  kpt_latt, AA_q_loc, AA_R_temp)
+          call comms_reduce(AA_R_temp(1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts, 'SUM', error, comm)
+
+          if (on_root) then
+            ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
+            call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, AA_R_temp, AA_R_b(:, :, :, nn, idir))
+          endif
+        enddo
+      enddo
+
+      deallocate (AA_q_loc)
+      deallocate (AA_R_temp)
+
+      if (on_root) then
+        deallocate (AA_q_b)
+
+        do nn = 1, kmesh_info%nntot
+          do ir = 1, wigner_seitz%nrpts_pw90
+            phase2(ir, nn) = -0.5_dp*dot_product(wigner_seitz%crvec_pw90(:, ir), kmesh_info%bk(:, nn, 1))
+          enddo
+        enddo
+
+        phase2 = exp(cmplx_i*phase2)
+
+        do idir = 1, 3
+          do j = 1, num_wann
+            do i = 1, num_wann
+              AA_R_b(i, j, :, :, idir) = AA_R_b(i, j, :, :, idir)*phase2(:, :)
+            enddo
+          enddo
+        enddo
+
+        do idir = 1, 3
+          do ir = 1, wigner_seitz%nrpts_pw90
+            do j = 1, num_wann
+              do i = 1, num_wann
+                AA_R(i, j, ir, idir) = sum(AA_R_b(i, j, ir, :, idir))
+              enddo
+            enddo
+          enddo
+        enddo
 
         do ir = 1, wigner_seitz%nrpts_pw90
-          do i = 1, num_wann
-            if ((wigner_seitz%irvec_pw90(1, ir) .eq. 0) .and. &
-                (wigner_seitz%irvec_pw90(2, ir) .eq. 0) .and. &
-                (wigner_seitz%irvec_pw90(3, ir) .eq. 0)) then
+          if ((wigner_seitz%irvec_pw90(1, ir) .eq. 0) .and. &
+              (wigner_seitz%irvec_pw90(2, ir) .eq. 0) .and. &
+              (wigner_seitz%irvec_pw90(3, ir) .eq. 0)) then
+            do i = 1, num_wann
               AA_R(i, i, ir, :) = wigner_seitz%wannier_centres_from_AA_R(:, i)
-            endif
+            enddo
+          endif
+        enddo
+      endif
+    else
+      allocate (AA_q(num_wann, num_wann, num_kpts, 3))
+
+      if (on_root) then
+        do idir = 1, 3
+          do ik = 1, num_kpts
+            do j = 1, num_wann
+              do i = 1, num_wann
+                AA_q(i, j, ik, idir) = sum(AA_q_b(i, j, ik, :, idir))
+              enddo
+            enddo
           enddo
         enddo
-      else
-        AA_q_b(:, :, :, 1, :) = sum(AA_q_b, 4)
         !
+        deallocate (AA_q_b)
+
         ! Since Eq.(44) WYSV06 does not preserve the Hermiticity of the
         ! Berry potential matrix, take Hermitean part (whether this
         ! makes a difference or not for e.g. the AHC, depends on which
@@ -670,30 +745,37 @@ contains
         !
         do idir = 1, 3
           do ik = 1, num_kpts
-            AA_q_b(:, :, ik, 1, idir) = &
-              0.5_dp*(AA_q_b(:, :, ik, 1, idir) &
-                      + conjg(transpose(AA_q_b(:, :, ik, 1, idir))))
+            AA_q(:, :, ik, idir) = &
+              0.5_dp*(AA_q(:, :, ik, idir) &
+                      + conjg(transpose(AA_q(:, :, ik, idir))))
           enddo
         enddo
-
-        do idir = 1, 3
-          call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, &
-                              AA_q_b(:, :, :, 1, idir), AA_R_b_temp(:, :, :, 1, idir))
-        enddo
-
-        ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
-        do idir = 1, 3
-          call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
-                                     AA_R_b_temp(:, :, :, 1, idir), AA_R_b(:, :, :, 1, idir))
-        enddo
-
-        AA_R = AA_R_b(:, :, :, 1, :)
       endif
+      !
+      allocate (counts(0:mpisize(comm) - 1))
+      allocate (displs(0:mpisize(comm) - 1))
 
-      deallocate (AA_R_b_temp)
-      deallocate (AA_R_b)
+      w = num_wann*num_wann
+      call comms_array_split(num_kpts, counts, displs, comm)
+      allocate (AA_q_loc(num_wann, num_wann, counts(mpirank(comm))))
+      allocate (AA_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
 
-    endif !on_root
+      do idir = 1, 3
+        call comms_scatterv(AA_q_loc, w*counts(mpirank(comm)), AA_q(:, :, :, idir), w*counts, w*displs, error, comm)
+        call fourier_loc_q_to_R(num_kpts, counts, displs, mpirank(comm), wigner_seitz%nrpts, wigner_seitz%irvec, &
+                                kpt_latt, AA_q_loc, AA_R_temp)
+        call comms_reduce(AA_R_temp(1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts, 'SUM', error, comm)
+
+        if (on_root) then
+          ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
+          call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, AA_R_temp, AA_R(:, :, :, idir))
+        endif
+      enddo
+
+      deallocate (AA_q_loc)
+      deallocate (AA_q)
+      deallocate (AA_R_temp)
+    endif
 
     call comms_bcast(AA_R(1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3, error, comm)
     call comms_bcast(wigner_seitz%wannier_centres_from_AA_R(1, 1), num_wann*3, error, comm)
@@ -713,7 +795,7 @@ contains
   end subroutine get_AA_R
 
   !================================================
-  subroutine get_BB_R(dis_manifold, kmesh_info, kpt_latt, print_output, BB_R, v_matrix, eigval, &
+  subroutine get_BB_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, HH_R, BB_R, v_matrix, eigval, &
                       scissors_shift, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, num_wann, &
                       have_disentangled, seedname, stdout, timer, error, comm)
     !================================================
@@ -722,13 +804,14 @@ contains
     !! BB_a(k) = i<u|H|del_a u> (a=x,y,z)
     !
     !================================================
-    use w90_postw90_types, only: wigner_seitz_type
+    use w90_postw90_types, only: pw90_berry_mod_type, wigner_seitz_type
     use w90_types, only: dis_manifold_type, kmesh_info_type, ws_distance_type, ws_region_type, &
       print_output_type, timer_list_type
 
     implicit none
 
     ! arguments
+    type(pw90_berry_mod_type), intent(in) :: pw90_berry
     type(dis_manifold_type), intent(in) :: dis_manifold
     type(kmesh_info_type), intent(in)   :: kmesh_info
     type(wigner_seitz_type), intent(in) :: wigner_seitz
@@ -746,22 +829,29 @@ contains
     real(kind=dp), intent(in) :: kpt_latt(:, :)
 
     complex(kind=dp), intent(in) :: v_matrix(:, :, :)
+    complex(kind=dp), allocatable, intent(inout) :: HH_R(:, :, :)
     complex(kind=dp), allocatable, intent(inout) :: BB_R(:, :, :, :) ! <0|H(r-R)|R>
-    complex(kind=dp), allocatable :: BB_R_temp(:, :, :, :)
+    complex(kind=dp), allocatable :: BB_R_temp(:, :, :)
+    complex(kind=dp), allocatable :: BB_R_b(:, :, :, :, :)
 
     logical, intent(in) :: have_disentangled
     character(len=50), intent(in) :: seedname
 
     ! local variables
-    integer          :: idir, n, m, nn, &
+    integer          :: idir, n, m, nn, i, j, ir, &
                         ik, ik2, inn, nnl, nnm, nnn, &
                         winmin_q, winmin_qb, ncount, &
-                        nb_tmp, nkp_tmp, nntot_tmp, mmn_in
+                        nb_tmp, nkp_tmp, nntot_tmp, mmn_in, w
 
     complex(kind=dp), allocatable :: S_o(:, :)
     complex(kind=dp), allocatable :: BB_q(:, :, :, :)
+    complex(kind=dp), allocatable :: BB_q_loc(:, :, :)
+    complex(kind=dp), allocatable :: BB_q_b(:, :, :, :, :)
     complex(kind=dp), allocatable :: H_q_qb(:, :)
+    real(kind=dp), allocatable    :: r0(:, :, :)
+    complex(kind=dp), allocatable :: phase1(:, :, :), phase2(:, :)
     integer, allocatable          :: num_states(:)
+    integer, allocatable          :: counts(:), displs(:)
     real(kind=dp)                 :: m_real, m_imag
     logical                       :: nn_found
     character(len=60)             :: header
@@ -769,8 +859,6 @@ contains
     logical :: on_root = .false.
 
     if (mpirank(comm) == 0) on_root = .true.
-
-    allocate (BB_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3))
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_start('get_oper: get_BB_R', timer)
@@ -789,7 +877,7 @@ contains
         return
       endif
 
-      allocate (BB_q(num_wann, num_wann, num_kpts, 3))
+      allocate (BB_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3))
       allocate (S_o(num_bands, num_bands))
       allocate (H_q_qb(num_wann, num_wann))
 
@@ -825,7 +913,7 @@ contains
         return
       endif
 
-      BB_q = cmplx_0
+      BB_q_b = cmplx_0
 
       do ncount = 1, num_kpts*kmesh_info%nntot
         !
@@ -872,23 +960,157 @@ contains
                                       num_states(kmesh_info%nnlist(ik, nn)), S_o, &
                                       have_disentangled, H=H_q_qb)
         do idir = 1, 3
-          BB_q(:, :, ik, idir) = BB_q(:, :, ik, idir) &
-                                 + cmplx_i*kmesh_info%wb(nn)*kmesh_info%bk(idir, nn, ik) &
-                                 *H_q_qb(:, :)
+          BB_q_b(:, :, ik, nn, idir) = BB_q_b(:, :, ik, nn, idir) &
+                                       + cmplx_i*kmesh_info%wb(nn)*kmesh_info%bk(idir, nn, ik) &
+                                       *H_q_qb(:, :)
         enddo
       enddo !ncount
 
       close (mmn_in)
 
-      call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, BB_q(:, :, :, 1), BB_R_temp(:, :, :, 1))
-      call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, BB_q(:, :, :, 2), BB_R_temp(:, :, :, 2))
-      call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, BB_q(:, :, :, 3), BB_R_temp(:, :, :, 3))
-
-      ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
-      do idir = 1, 3
-        call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, BB_R_temp(:, :, :, idir), BB_R(:, :, :, idir))
-      enddo
     endif !on_root
+
+    if (pw90_berry%transl_inv_full) then
+      if (on_root) then
+        allocate (r0(num_wann, num_wann, 3))
+        allocate (phase1(num_wann, num_wann, kmesh_info%nntot))
+        allocate (phase2(wigner_seitz%nrpts_pw90, kmesh_info%nntot))
+        allocate (BB_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, kmesh_info%nntot, 3))
+
+        if (.not. allocated(HH_R)) then
+          call set_error_fatal(error, 'transl_inv_full=T for BB_R needs HH_R', comm)
+        endif
+
+        do j = 1, num_wann
+          do i = 1, num_wann
+            r0(i, j, :) = (wigner_seitz%wannier_centres_from_AA_R(:, i) + &
+                           wigner_seitz%wannier_centres_from_AA_R(:, j))/2.0_dp
+          enddo
+        enddo
+
+        do nn = 1, kmesh_info%nntot
+          do j = 1, num_wann
+            do i = 1, num_wann
+              phase1(i, j, nn) = dot_product(r0(i, j, :), kmesh_info%bk(:, nn, 1))
+            enddo
+          enddo
+        enddo
+
+        phase1 = exp(cmplx_i*phase1)
+
+        do idir = 1, 3
+          do ik = 1, num_kpts
+            BB_q_b(:, :, ik, :, idir) = BB_q_b(:, :, ik, :, idir)*phase1(:, :, :)
+          enddo
+        enddo
+
+        deallocate (phase1)
+      endif
+      !
+      allocate (counts(0:mpisize(comm) - 1))
+      allocate (displs(0:mpisize(comm) - 1))
+
+      w = num_wann*num_wann
+      call comms_array_split(num_kpts, counts, displs, comm)
+      allocate (BB_q_loc(num_wann, num_wann, counts(mpirank(comm))))
+      allocate (BB_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
+
+      do idir = 1, 3
+        do nn = 1, kmesh_info%nntot
+          call comms_scatterv(BB_q_loc, w*counts(mpirank(comm)), BB_q_b(:, :, :, nn, idir), w*counts, w*displs, error, comm)
+          call fourier_loc_q_to_R(num_kpts, counts, displs, mpirank(comm), wigner_seitz%nrpts, wigner_seitz%irvec, &
+                                  kpt_latt, BB_q_loc, BB_R_temp)
+          call comms_reduce(BB_R_temp(1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts, 'SUM', error, comm)
+
+          if (on_root) then
+            ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
+            call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, BB_R_temp, BB_R_b(:, :, :, nn, idir))
+          endif
+        enddo
+      enddo
+
+      deallocate (BB_q_loc)
+      deallocate (BB_R_temp)
+
+      if (on_root) then
+        deallocate (BB_q_b)
+
+        do nn = 1, kmesh_info%nntot
+          do ir = 1, wigner_seitz%nrpts_pw90
+            phase2(ir, nn) = -0.5_dp*dot_product(wigner_seitz%crvec_pw90(:, ir), kmesh_info%bk(:, nn, 1))
+          enddo
+        enddo
+
+        phase2 = exp(cmplx_i*phase2)
+
+        do idir = 1, 3
+          do j = 1, num_wann
+            do i = 1, num_wann
+              BB_R_b(i, j, :, :, idir) = BB_R_b(i, j, :, :, idir)*phase2(:, :)
+            enddo
+          enddo
+        enddo
+
+        do idir = 1, 3
+          do ir = 1, wigner_seitz%nrpts_pw90
+            do j = 1, num_wann
+              do i = 1, num_wann
+                BB_R(i, j, ir, idir) = sum(BB_R_b(i, j, ir, :, idir))
+              enddo
+            enddo
+          enddo
+        enddo
+
+        deallocate (BB_R_b)
+
+        do idir = 1, 3
+          do ir = 1, wigner_seitz%nrpts_pw90
+            BB_R(:, :, ir, idir) = BB_R(:, :, ir, idir) + &
+                                   (r0(:, :, idir) - 0.5_dp*wigner_seitz%crvec_pw90(idir, ir))*HH_R(:, :, ir)
+          enddo
+        enddo
+      endif
+    else
+      allocate (BB_q(num_wann, num_wann, num_kpts, 3))
+
+      if (on_root) then
+        do idir = 1, 3
+          do ik = 1, num_kpts
+            do j = 1, num_wann
+              do i = 1, num_wann
+                BB_q(i, j, ik, idir) = sum(BB_q_b(i, j, ik, :, idir))
+              enddo
+            enddo
+          enddo
+        enddo
+        !
+        deallocate (BB_q_b)
+      endif
+      !
+      allocate (counts(0:mpisize(comm) - 1))
+      allocate (displs(0:mpisize(comm) - 1))
+
+      w = num_wann*num_wann
+      call comms_array_split(num_kpts, counts, displs, comm)
+      allocate (BB_q_loc(num_wann, num_wann, counts(mpirank(comm))))
+      allocate (BB_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
+
+      do idir = 1, 3
+        call comms_scatterv(BB_q_loc, w*counts(mpirank(comm)), BB_q(:, :, :, idir), w*counts, w*displs, error, comm)
+        call fourier_loc_q_to_R(num_kpts, counts, displs, mpirank(comm), wigner_seitz%nrpts, wigner_seitz%irvec, &
+                                kpt_latt, BB_q_loc, BB_R_temp)
+        call comms_reduce(BB_R_temp(1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts, 'SUM', error, comm)
+
+        if (on_root) then
+          ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
+          call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, BB_R_temp, BB_R(:, :, :, idir))
+        endif
+      enddo
+
+      deallocate (BB_q_loc)
+      deallocate (BB_q)
+      deallocate (BB_R_temp)
+    endif
 
     call comms_bcast(BB_R(1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3, error, comm)
     if (allocated(error)) return
@@ -896,8 +1118,6 @@ contains
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_stop('get_oper: get_BB_R', timer)
     return
-
-    deallocate (BB_R_temp)
 
 103 call set_error_file(error, 'Error: Problem opening input file '//trim(seedname)//'.mmn', comm)
     return
@@ -907,8 +1127,8 @@ contains
   end subroutine get_BB_R
 
   !================================================
-  subroutine get_CC_R(dis_manifold, kmesh_info, kpt_latt, print_output, pw90_oper_read, CC_R, &
-                      v_matrix, eigval, scissors_shift, wigner_seitz, ws_distance, ws_region, &
+  subroutine get_CC_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, pw90_oper_read, HH_R, &
+                      BB_R, CC_R, v_matrix, eigval, scissors_shift, wigner_seitz, ws_distance, ws_region, &
                       num_bands, num_kpts, num_wann, have_disentangled, seedname, stdout, timer, error, comm)
     !================================================
     !
@@ -917,13 +1137,15 @@ contains
     !
     !================================================
 
-    use w90_postw90_types, only: pw90_oper_read_type, wigner_seitz_type
+    use w90_postw90_types, only: pw90_berry_mod_type, pw90_oper_read_type, wigner_seitz_type
     use w90_types, only: dis_manifold_type, kmesh_info_type, ws_distance_type, ws_region_type, &
       print_output_type, timer_list_type
+    use w90_utility, only: utility_compar
 
     implicit none
 
     ! arguments
+    type(pw90_berry_mod_type), intent(in) :: pw90_berry
     type(dis_manifold_type), intent(in)   :: dis_manifold
     type(kmesh_info_type), intent(in)     :: kmesh_info
     type(pw90_oper_read_type), intent(in) :: pw90_oper_read
@@ -942,20 +1164,29 @@ contains
     real(kind=dp), intent(in) :: kpt_latt(:, :)
 
     complex(kind=dp), intent(in) :: v_matrix(:, :, :)
+    complex(kind=dp), allocatable, intent(inout) :: HH_R(:, :, :)
+    complex(kind=dp), allocatable, intent(inout) :: BB_R(:, :, :, :)
     complex(kind=dp), allocatable, intent(inout) :: CC_R(:, :, :, :, :) ! <0|r_alpha.H(r-R)_beta|R>
-    complex(kind=dp), allocatable :: CC_R_temp(:, :, :, :, :)
+    complex(kind=dp), allocatable :: CC_R_temp(:, :, :)
+    complex(kind=dp), allocatable :: CC_R_b(:, :, :, :, :, :, :)
 
     logical, intent(in) :: have_disentangled
     character(len=50), intent(in) :: seedname
 
     ! local variables
-    integer          :: m, n, a, b, nn1, nn2, ik, nb_tmp, nkp_tmp, &
-                        nntot_tmp, uHu_in, qb1, qb2, winmin_qb1, winmin_qb2
+    integer          :: m, n, a, b, nn1, nn2, ik, nb_tmp, nkp_tmp, i, j, ir, ir2, &
+                        nntot_tmp, uHu_in, qb1, qb2, winmin_qb1, winmin_qb2, &
+                        ifpos, ifneg, w
 
     integer, allocatable          :: num_states(:)
+    integer, allocatable          :: counts(:), displs(:)
     complex(kind=dp), allocatable :: CC_q(:, :, :, :, :)
+    complex(kind=dp), allocatable :: CC_q_b(:, :, :, :, :, :, :)
+    complex(kind=dp), allocatable :: CC_q_loc(:, :, :)
     complex(kind=dp), allocatable :: Ho_qb1_q_qb2(:, :)
     complex(kind=dp), allocatable :: H_qb1_q_qb2(:, :)
+    real(kind=dp), allocatable    :: r0(:, :, :)
+    complex(kind=dp), allocatable :: phase1(:, :, :, :), phase2(:, :, :)
     real(kind=dp)                 :: c_real, c_img
     character(len=60)             :: header
     logical :: on_root = .false.
@@ -964,8 +1195,6 @@ contains
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_start('get_oper: get_CC_R', timer)
-
-    allocate (CC_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3, 3))
 
     if (.not. allocated(CC_R)) then
       allocate (CC_R(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3, 3))
@@ -982,9 +1211,9 @@ contains
         return
       endif
 
+      allocate (CC_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, kmesh_info%nntot, 3, 3))
       allocate (Ho_qb1_q_qb2(num_bands, num_bands))
       allocate (H_qb1_q_qb2(num_wann, num_wann))
-      allocate (CC_q(num_wann, num_wann, num_kpts, 3, 3))
 
       allocate (num_states(num_kpts))
       do ik = 1, num_kpts
@@ -1025,7 +1254,7 @@ contains
         return
       endif
 
-      CC_q = cmplx_0
+      CC_q_b = cmplx_0
       do ik = 1, num_kpts
         do nn2 = 1, kmesh_info%nntot
           qb2 = kmesh_info%nnlist(ik, nn2)
@@ -1066,37 +1295,212 @@ contains
                                           Ho_qb1_q_qb2, have_disentangled, H_qb1_q_qb2)
             do b = 1, 3
               do a = 1, b
-                CC_q(:, :, ik, a, b) = CC_q(:, :, ik, a, b) &
-                                       + kmesh_info%wb(nn1)*kmesh_info%bk(a, nn1, ik) &
-                                       *kmesh_info%wb(nn2)*kmesh_info%bk(b, nn2, ik)*H_qb1_q_qb2(:, :)
+                CC_q_b(:, :, ik, nn1, nn2, a, b) = CC_q_b(:, :, ik, nn1, nn2, a, b) &
+                                                   + kmesh_info%wb(nn1)*kmesh_info%bk(a, nn1, ik) &
+                                                   *kmesh_info%wb(nn2)*kmesh_info%bk(b, nn2, ik)*H_qb1_q_qb2(:, :)
               enddo
             enddo
           enddo !nn1
         enddo !nn2
-        do b = 1, 3
-          do a = 1, b
-            CC_q(:, :, ik, b, a) = conjg(transpose(CC_q(:, :, ik, a, b)))
-          enddo
-        enddo
       enddo !ik
 
       close (uHu_in)
 
-      do b = 1, 3
-        do a = 1, 3
-          call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, &
-                              CC_q(:, :, :, a, b), CC_R_temp(:, :, :, a, b))
-        enddo
-      enddo
-
-      do b = 1, 3
-        do a = 1, 3
-          call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
-                                     CC_R_temp(:, :, :, a, b), CC_R(:, :, :, a, b))
-        enddo
-      enddo
-
     endif !on_root
+
+    if (pw90_berry%transl_inv_full) then
+      if (on_root) then
+        allocate (r0(num_wann, num_wann, 3))
+        allocate (phase1(num_wann, num_wann, kmesh_info%nntot, kmesh_info%nntot))
+        allocate (phase2(wigner_seitz%nrpts_pw90, kmesh_info%nntot, kmesh_info%nntot))
+        allocate (CC_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, kmesh_info%nntot, kmesh_info%nntot, 3, 3))
+
+        if (.not. allocated(HH_R)) then
+          call set_error_fatal(error, 'transl_inv_full=T for CC_R needs HH_R', comm)
+        endif
+
+        if (.not. allocated(BB_R)) then
+          call set_error_fatal(error, 'transl_inv_full=T for CC_R needs BB_R', comm)
+        endif
+
+        do j = 1, num_wann
+          do i = 1, num_wann
+            r0(i, j, :) = (wigner_seitz%wannier_centres_from_AA_R(:, i) + &
+                           wigner_seitz%wannier_centres_from_AA_R(:, j))/2.0_dp
+          enddo
+        enddo
+
+        do nn2 = 1, kmesh_info%nntot
+          do nn1 = 1, kmesh_info%nntot
+            do j = 1, num_wann
+              do i = 1, num_wann
+                phase1(i, j, nn1, nn2) = -dot_product(r0(i, j, :), kmesh_info%bk(:, nn1, 1)) + &
+                                         dot_product(r0(i, j, :), kmesh_info%bk(:, nn2, 1))
+              enddo
+            enddo
+          enddo
+        enddo
+
+        phase1 = exp(cmplx_i*phase1)
+
+        do b = 1, 3
+          do a = 1, 3
+            do ik = 1, num_kpts
+              CC_q_b(:, :, ik, :, :, a, b) = CC_q_b(:, :, ik, :, :, a, b)*phase1(:, :, :, :)
+            enddo
+          enddo
+        enddo
+
+        deallocate (phase1)
+      endif
+
+      allocate (counts(0:mpisize(comm) - 1))
+      allocate (displs(0:mpisize(comm) - 1))
+
+      w = num_wann*num_wann
+      call comms_array_split(num_kpts, counts, displs, comm)
+      allocate (CC_q_loc(num_wann, num_wann, counts(mpirank(comm))))
+      allocate (CC_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
+
+      do b = 1, 3
+        do a = 1, 3
+          do nn2 = 1, kmesh_info%nntot
+            do nn1 = 1, kmesh_info%nntot
+              call comms_scatterv(CC_q_loc, w*counts(mpirank(comm)), CC_q_b(:, :, :, nn1, nn2, a, b), &
+                                  w*counts, w*displs, error, comm)
+              call fourier_loc_q_to_R(num_kpts, counts, displs, mpirank(comm), wigner_seitz%nrpts, wigner_seitz%irvec, &
+                                      kpt_latt, CC_q_loc, CC_R_temp)
+              call comms_reduce(CC_R_temp(1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts, 'SUM', error, comm)
+
+              if (on_root) then
+                ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
+                call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
+                                           CC_R_temp, CC_R_b(:, :, :, nn1, nn2, a, b))
+              endif
+            enddo
+          enddo
+        enddo
+      enddo
+
+      deallocate (CC_q_loc)
+      deallocate (CC_R_temp)
+
+      if (on_root) then
+        deallocate (CC_q_b)
+
+        do nn2 = 1, kmesh_info%nntot
+          do nn1 = 1, kmesh_info%nntot
+            do ir = 1, wigner_seitz%nrpts_pw90
+              phase2(ir, nn1, nn2) = -0.5_dp* &
+                                     (dot_product(wigner_seitz%crvec_pw90(:, ir), kmesh_info%bk(:, nn1, 1)) + &
+                                      dot_product(wigner_seitz%crvec_pw90(:, ir), kmesh_info%bk(:, nn2, 1)))
+            enddo
+          enddo
+        enddo
+
+        phase2 = exp(cmplx_i*phase2)
+
+        do b = 1, 3
+          do a = 1, 3
+            do j = 1, num_wann
+              do i = 1, num_wann
+                CC_R_b(i, j, :, :, :, a, b) = CC_R_b(i, j, :, :, :, a, b)*phase2(:, :, :)
+              enddo
+            enddo
+          enddo
+        enddo
+
+        do b = 1, 3
+          do a = 1, 3
+            do ir = 1, wigner_seitz%nrpts_pw90
+              do j = 1, num_wann
+                do i = 1, num_wann
+                  CC_R(i, j, ir, a, b) = sum(CC_R_b(i, j, ir, :, :, a, b))
+                enddo
+              enddo
+            enddo
+          enddo
+        enddo
+
+        deallocate (CC_R_b)
+
+        do b = 1, 3
+          do a = 1, 3
+            do ir = 1, wigner_seitz%nrpts_pw90
+              CC_R(:, :, ir, a, b) = CC_R(:, :, ir, a, b) + &
+                                     (r0(:, :, a) + 0.5_dp*wigner_seitz%crvec_pw90(a, ir))* &
+                                     BB_R(:, :, ir, b)
+              do ir2 = 1, wigner_seitz%nrpts_pw90
+                call utility_compar(wigner_seitz%crvec_pw90(1, ir), &
+                                    wigner_seitz%crvec_pw90(1, ir2), ifpos, ifneg)
+                if (ifneg .eq. 1) then
+                  CC_R(:, :, ir, a, b) = CC_R(:, :, ir, a, b) + &
+                                         conjg(transpose(BB_R(:, :, ir2, a)))* &
+                                         (r0(:, :, b) - 0.5_dp*wigner_seitz%crvec_pw90(b, ir))
+                  exit
+                endif
+              enddo
+              CC_R(:, :, ir, a, b) = CC_R(:, :, ir, a, b) + &
+                                     (r0(:, :, a) + 0.5_dp*wigner_seitz%crvec_pw90(a, ir))* &
+                                     wigner_seitz%crvec_pw90(b, ir)*HH_R(:, :, ir)
+            enddo
+          enddo
+        enddo
+      endif
+    else
+      allocate (CC_q(num_wann, num_wann, num_kpts, 3, 3))
+
+      if (on_root) then
+        do b = 1, 3
+          do a = 1, 3
+            do ik = 1, num_kpts
+              do j = 1, num_wann
+                do i = 1, num_wann
+                  CC_q(i, j, ik, a, b) = sum(CC_q_b(i, j, ik, :, :, a, b))
+                enddo
+              enddo
+            enddo
+          enddo
+        enddo
+        !
+        deallocate (CC_q_b)
+        !
+        do b = 1, 3
+          do a = 1, b
+            do ik = 1, num_kpts
+              CC_q(:, :, ik, b, a) = conjg(transpose(CC_q(:, :, ik, a, b)))
+            enddo
+          enddo
+        enddo
+        !
+      endif
+
+      allocate (counts(0:mpisize(comm) - 1))
+      allocate (displs(0:mpisize(comm) - 1))
+
+      w = num_wann*num_wann
+      call comms_array_split(num_kpts, counts, displs, comm)
+      allocate (CC_q_loc(num_wann, num_wann, counts(mpirank(comm))))
+      allocate (CC_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
+
+      do b = 1, 3
+        do a = 1, 3
+          call comms_scatterv(CC_q_loc, w*counts(mpirank(comm)), CC_q(:, :, :, a, b), w*counts, w*displs, error, comm)
+          call fourier_loc_q_to_R(num_kpts, counts, displs, mpirank(comm), wigner_seitz%nrpts, wigner_seitz%irvec, &
+                                  kpt_latt, CC_q_loc, CC_R_temp)
+          call comms_reduce(CC_R_temp(1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts, 'SUM', error, comm)
+
+          if (on_root) then
+            ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
+            call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, CC_R_temp, CC_R(:, :, :, a, b))
+          endif
+        enddo
+      enddo
+
+      deallocate (CC_q_loc)
+      deallocate (CC_q)
+      deallocate (CC_R_temp)
+    endif
 
     call comms_bcast(CC_R(1, 1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3*3, error, comm)
     if (allocated(error)) return
@@ -1104,8 +1508,6 @@ contains
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_stop('get_oper: get_CC_R', timer)
     return
-
-    deallocate (CC_R_temp)
 
 105 call set_error_file(error, 'Error: Problem opening input file '//trim(seedname)//'.uHu', comm)
     return
@@ -1928,9 +2330,9 @@ contains
   end subroutine get_SHC_R
 
   !================================================
-  subroutine get_SBB_R(dis_manifold, kmesh_info, kpt_latt, print_output, SBB_R, v_matrix, &
-                       scissors_shift, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, &
-                       num_wann, have_disentangled, seedname, stdout, timer, error, comm)
+  subroutine get_SBB_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, SH_R, SBB_R, &
+                       v_matrix, scissors_shift, wigner_seitz, ws_distance, ws_region, num_bands, &
+                       num_kpts, num_wann, have_disentangled, seedname, stdout, timer, error, comm)
     !================================================!
     !
     ! SBB_ab(R) = <0|s_a.H.(r-R)_b|R> is the Fourier transform of
@@ -1938,13 +2340,14 @@ contains
     !
     !================================================!
 
-    use w90_postw90_types, only: wigner_seitz_type
+    use w90_postw90_types, only: pw90_berry_mod_type, wigner_seitz_type
     use w90_types, only: dis_manifold_type, kmesh_info_type, ws_distance_type, ws_region_type, &
       print_output_type, timer_list_type
 
     implicit none
 
     ! arguments
+    type(pw90_berry_mod_type), intent(in) :: pw90_berry
     type(dis_manifold_type), intent(in) :: dis_manifold
     type(kmesh_info_type), intent(in)   :: kmesh_info
     type(wigner_seitz_type), intent(in) :: wigner_seitz
@@ -1962,20 +2365,27 @@ contains
     real(kind=dp), intent(in) :: kpt_latt(:, :)
 
     complex(kind=dp), intent(in) :: v_matrix(:, :, :)
+    complex(kind=dp), allocatable, intent(in) :: SH_R(:, :, :, :)
     complex(kind=dp), allocatable, intent(inout) :: SBB_R(:, :, :, :, :) ! <0n|sigma_x,y,z.H.(r-R)_alpha|Rm>
-    complex(kind=dp), allocatable :: SBB_R_temp(:, :, :, :, :)
+    complex(kind=dp), allocatable :: SBB_R_temp(:, :, :)
+    complex(kind=dp), allocatable :: SBB_R_b(:, :, :, :, :, :)
 
     logical, intent(in) :: have_disentangled
     character(len=50), intent(in) :: seedname
 
     ! local variables
-    integer          :: i, j, ii, jj, m, n, a, b, nn2, ik, nb_tmp, nkp_tmp, &
-                        nntot_tmp, sHu_in, qb2, winmin_q, winmin_qb2
+    integer          :: i, j, ii, jj, ir, m, n, a, b, nn2, ik, nb_tmp, nkp_tmp, &
+                        nntot_tmp, sHu_in, qb2, winmin_q, winmin_qb2, w
     integer :: ipol
     integer, allocatable          :: num_states(:)
+    integer, allocatable          :: counts(:), displs(:)
+    complex(kind=dp), allocatable :: SBB_q_b(:, :, :, :, :, :)
     complex(kind=dp), allocatable :: SBB_q(:, :, :, :, :)
+    complex(kind=dp), allocatable :: SBB_q_loc(:, :, :)
     complex(kind=dp), allocatable :: Ho_q_qb2(:, :, :)
     complex(kind=dp), allocatable :: H_q_qb2(:, :)
+    real(kind=dp), allocatable    :: r0(:, :, :)
+    complex(kind=dp), allocatable :: phase1(:, :, :), phase2(:, :)
     character(len=60)             :: header
     logical :: on_root = .false.
 
@@ -1983,8 +2393,6 @@ contains
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_start('get_oper: get_SBB_R', timer)
-
-    allocate (SBB_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3, 3))
 
     if (.not. allocated(SBB_R)) then
       allocate (SBB_R(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3, 3))
@@ -2003,7 +2411,7 @@ contains
 
       allocate (Ho_q_qb2(num_bands, num_bands, 3))
       allocate (H_q_qb2(num_wann, num_wann))
-      allocate (SBB_q(num_wann, num_wann, num_kpts, 3, 3))
+      allocate (SBB_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3, 3))
 
       allocate (num_states(num_kpts))
       do ik = 1, num_kpts
@@ -2034,7 +2442,7 @@ contains
         return
       endif
 
-      SBB_q = cmplx_0
+      SBB_q_b = cmplx_0
       do ik = 1, num_kpts
 
         call get_win_min(num_bands, dis_manifold, ik, winmin_q, have_disentangled)
@@ -2069,29 +2477,172 @@ contains
               enddo
             enddo
             do b = 1, 3
-              SBB_q(:, :, ik, ipol, b) = SBB_q(:, :, ik, ipol, b) + &
-                                         cmplx_i*kmesh_info%wb(nn2)*kmesh_info%bk(b, nn2, ik)*H_q_qb2(:, :)
+              SBB_q_b(:, :, ik, nn2, ipol, b) = SBB_q_b(:, :, ik, nn2, ipol, b) + &
+                                                cmplx_i*kmesh_info%wb(nn2)*kmesh_info%bk(b, nn2, ik)*H_q_qb2(:, :)
             enddo
           enddo !ipol
         enddo !nn2
       enddo !ik
 
       close (sHu_in)
-      do b = 1, 3
-        do a = 1, 3
-          call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, &
-                              SBB_q(:, :, :, a, b), SBB_R_temp(:, :, :, a, b))
-        enddo
-      enddo
-
-      do b = 1, 3
-        do a = 1, 3
-          call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
-                                     SBB_R_temp(:, :, :, a, b), SBB_R(:, :, :, a, b))
-        enddo
-      enddo
 
     endif !on_root
+
+    if (pw90_berry%transl_inv_full) then
+      if (on_root) then
+        allocate (r0(num_wann, num_wann, 3))
+        allocate (phase1(num_wann, num_wann, kmesh_info%nntot))
+        allocate (phase2(wigner_seitz%nrpts_pw90, kmesh_info%nntot))
+        allocate (SBB_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, kmesh_info%nntot, 3, 3))
+
+        if (.not. allocated(SH_R)) then
+          call set_error_fatal(error, 'transl_inv_full=T for SBB_R needs SH_R', comm)
+        endif
+
+        do j = 1, num_wann
+          do i = 1, num_wann
+            r0(i, j, :) = (wigner_seitz%wannier_centres_from_AA_R(:, i) + &
+                           wigner_seitz%wannier_centres_from_AA_R(:, j))/2.0_dp
+          enddo
+        enddo
+
+        do nn2 = 1, kmesh_info%nntot
+          do j = 1, num_wann
+            do i = 1, num_wann
+              phase1(i, j, nn2) = dot_product(r0(i, j, :), kmesh_info%bk(:, nn2, 1))
+            enddo
+          enddo
+        enddo
+
+        phase1 = exp(cmplx_i*phase1)
+
+        do b = 1, 3
+          do ipol = 1, 3
+            do ik = 1, num_kpts
+              SBB_q_b(:, :, ik, :, ipol, b) = SBB_q_b(:, :, ik, :, ipol, b)*phase1(:, :, :)
+            enddo
+          enddo
+        enddo
+
+        deallocate (phase1)
+      endif
+      !
+      allocate (counts(0:mpisize(comm) - 1))
+      allocate (displs(0:mpisize(comm) - 1))
+
+      w = num_wann*num_wann
+      call comms_array_split(num_kpts, counts, displs, comm)
+      allocate (SBB_q_loc(num_wann, num_wann, counts(mpirank(comm))))
+      allocate (SBB_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
+
+      do b = 1, 3
+        do ipol = 1, 3
+          do nn2 = 1, kmesh_info%nntot
+            call comms_scatterv(SBB_q_loc, w*counts(mpirank(comm)), SBB_q_b(:, :, :, nn2, ipol, b), w*counts, w*displs, error, comm)
+            call fourier_loc_q_to_R(num_kpts, counts, displs, mpirank(comm), wigner_seitz%nrpts, wigner_seitz%irvec, &
+                                    kpt_latt, SBB_q_loc, SBB_R_temp)
+            call comms_reduce(SBB_R_temp(1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts, 'SUM', error, comm)
+
+            if (on_root) then
+              ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
+              call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, SBB_R_temp, SBB_R_b(:, :, :, nn2, ipol, b))
+            endif
+          enddo
+        enddo
+      enddo
+
+      deallocate (SBB_q_loc)
+      deallocate (SBB_R_temp)
+
+      if (on_root) then
+        deallocate (SBB_q_b)
+
+        do nn2 = 1, kmesh_info%nntot
+          do ir = 1, wigner_seitz%nrpts_pw90
+            phase2(ir, nn2) = -0.5_dp*dot_product(wigner_seitz%crvec_pw90(:, ir), kmesh_info%bk(:, nn2, 1))
+          enddo
+        enddo
+
+        phase2 = exp(cmplx_i*phase2)
+
+        do b = 1, 3
+          do ipol = 1, 3
+            do j = 1, num_wann
+              do i = 1, num_wann
+                SBB_R_b(i, j, :, :, ipol, b) = SBB_R_b(i, j, :, :, ipol, b)*phase2(:, :)
+              enddo
+            enddo
+          enddo
+        enddo
+
+        do b = 1, 3
+          do ipol = 1, 3
+            do ir = 1, wigner_seitz%nrpts_pw90
+              do j = 1, num_wann
+                do i = 1, num_wann
+                  SBB_R(i, j, ir, ipol, b) = sum(SBB_R_b(i, j, ir, :, ipol, b))
+                enddo
+              enddo
+            enddo
+          enddo
+        enddo
+
+        deallocate (SBB_R_b)
+
+        do b = 1, 3
+          do ipol = 1, 3
+            do ir = 1, wigner_seitz%nrpts_pw90
+              SBB_R(:, :, ir, ipol, b) = SBB_R(:, :, ir, ipol, b) + &
+                                         (r0(:, :, b) - 0.5_dp*wigner_seitz%crvec_pw90(b, ir))*SH_R(:, :, ir, ipol)
+            enddo
+          enddo
+        enddo
+      endif
+    else
+      allocate (SBB_q(num_wann, num_wann, num_kpts, 3, 3))
+
+      if (on_root) then
+        do b = 1, 3
+          do ipol = 1, 3
+            do ik = 1, num_kpts
+              do j = 1, num_wann
+                do i = 1, num_wann
+                  SBB_q(i, j, ik, ipol, b) = sum(SBB_q_b(i, j, ik, :, ipol, b))
+                enddo
+              enddo
+            enddo
+          enddo
+        enddo
+        !
+        deallocate (SBB_q_b)
+      endif
+      !
+      allocate (counts(0:mpisize(comm) - 1))
+      allocate (displs(0:mpisize(comm) - 1))
+
+      w = num_wann*num_wann
+      call comms_array_split(num_kpts, counts, displs, comm)
+      allocate (SBB_q_loc(num_wann, num_wann, counts(mpirank(comm))))
+      allocate (SBB_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
+
+      do b = 1, 3
+        do ipol = 1, 3
+          call comms_scatterv(SBB_q_loc, w*counts(mpirank(comm)), SBB_q(:, :, :, ipol, b), w*counts, w*displs, error, comm)
+          call fourier_loc_q_to_R(num_kpts, counts, displs, mpirank(comm), wigner_seitz%nrpts, wigner_seitz%irvec, &
+                                  kpt_latt, SBB_q_loc, SBB_R_temp)
+          call comms_reduce(SBB_R_temp(1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts, 'SUM', error, comm)
+
+          if (on_root) then
+            ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
+            call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, SBB_R_temp, SBB_R(:, :, :, ipol, b))
+          endif
+        enddo
+      enddo
+
+      deallocate (SBB_q_loc)
+      deallocate (SBB_q)
+      deallocate (SBB_R_temp)
+    endif
 
     call comms_bcast(SBB_R(1, 1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3*3, error, comm)
     if (allocated(error)) return
@@ -2110,7 +2661,7 @@ contains
   end subroutine get_SBB_R
 
   !================================================
-  subroutine get_SAA_R(dis_manifold, kmesh_info, kpt_latt, print_output, SAA_R, v_matrix, &
+  subroutine get_SAA_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, SS_R, SAA_R, v_matrix, &
                        scissors_shift, wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, num_wann, &
                        have_disentangled, seedname, stdout, timer, error, comm)
     !================================================!
@@ -2120,13 +2671,14 @@ contains
     !
     !================================================!
 
-    use w90_postw90_types, only: wigner_seitz_type
+    use w90_postw90_types, only: pw90_berry_mod_type, wigner_seitz_type
     use w90_types, only: dis_manifold_type, kmesh_info_type, ws_distance_type, ws_region_type, &
       print_output_type, timer_list_type
 
     implicit none
 
     ! arguments
+    type(pw90_berry_mod_type), intent(in) :: pw90_berry
     type(dis_manifold_type), intent(in) :: dis_manifold
     type(kmesh_info_type), intent(in)   :: kmesh_info
     type(wigner_seitz_type), intent(in) :: wigner_seitz
@@ -2144,20 +2696,27 @@ contains
     real(kind=dp), intent(in) :: kpt_latt(:, :)
 
     complex(kind=dp), intent(in) :: v_matrix(:, :, :)
+    complex(kind=dp), allocatable, intent(in) :: SS_R(:, :, :, :)
     complex(kind=dp), allocatable, intent(inout) :: SAA_R(:, :, :, :, :) !<0n|sigma_x,y,z.(r-R)_alpha|Rm>
-    complex(kind=dp), allocatable :: SAA_R_temp(:, :, :, :, :)
+    complex(kind=dp), allocatable :: SAA_R_temp(:, :, :)
+    complex(kind=dp), allocatable :: SAA_R_b(:, :, :, :, :, :)
 
     logical, intent(in) :: have_disentangled
     character(len=50), intent(in) :: seedname
 
     ! local variables
-    integer          :: i, j, ii, jj, m, n, a, b, nn2, ik, nb_tmp, nkp_tmp, &
-                        nntot_tmp, sIu_in, qb2, winmin_q, winmin_qb2
+    integer          :: i, j, ii, jj, ir, m, n, a, b, nn2, ik, nb_tmp, nkp_tmp, &
+                        nntot_tmp, sIu_in, qb2, winmin_q, winmin_qb2, w
     integer :: ipol
     integer, allocatable          :: num_states(:)
+    integer, allocatable          :: counts(:), displs(:)
+    complex(kind=dp), allocatable :: SAA_q_b(:, :, :, :, :, :)
     complex(kind=dp), allocatable :: SAA_q(:, :, :, :, :)
+    complex(kind=dp), allocatable :: SAA_q_loc(:, :, :)
     complex(kind=dp), allocatable :: Ho_q_qb2(:, :, :)
     complex(kind=dp), allocatable :: H_q_qb2(:, :)
+    real(kind=dp), allocatable    :: r0(:, :, :)
+    complex(kind=dp), allocatable :: phase1(:, :, :), phase2(:, :)
     character(len=60)             :: header
     logical :: on_root = .false.
 
@@ -2165,8 +2724,6 @@ contains
 
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) &
       call io_stopwatch_start('get_oper: get_SAA_R', timer)
-
-    allocate (SAA_R_temp(num_wann, num_wann, wigner_seitz%nrpts, 3, 3))
 
     if (.not. allocated(SAA_R)) then
       allocate (SAA_R(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3, 3))
@@ -2185,7 +2742,7 @@ contains
 
       allocate (Ho_q_qb2(num_bands, num_bands, 3))
       allocate (H_q_qb2(num_wann, num_wann))
-      allocate (SAA_q(num_wann, num_wann, num_kpts, 3, 3))
+      allocate (SAA_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3, 3))
 
       allocate (num_states(num_kpts))
       do ik = 1, num_kpts
@@ -2216,7 +2773,7 @@ contains
         return
       endif
 
-      SAA_q = cmplx_0
+      SAA_q_b = cmplx_0
       do ik = 1, num_kpts
 
         call get_win_min(num_bands, dis_manifold, ik, winmin_q, have_disentangled)
@@ -2251,8 +2808,8 @@ contains
               enddo
             enddo
             do b = 1, 3
-              SAA_q(:, :, ik, ipol, b) = SAA_q(:, :, ik, ipol, b) + &
-                                         cmplx_i*kmesh_info%wb(nn2)*kmesh_info%bk(b, nn2, ik)*H_q_qb2(:, :)
+              SAA_q_b(:, :, ik, nn2, ipol, b) = SAA_q_b(:, :, ik, nn2, ipol, b) + &
+                                                cmplx_i*kmesh_info%wb(nn2)*kmesh_info%bk(b, nn2, ik)*H_q_qb2(:, :)
             enddo
 !             enddo !nn1
           enddo !ipol
@@ -2261,20 +2818,163 @@ contains
 
       close (sIu_in)
 
+    endif !on_root
+
+    if (pw90_berry%transl_inv_full) then
+      if (on_root) then
+        allocate (r0(num_wann, num_wann, 3))
+        allocate (phase1(num_wann, num_wann, kmesh_info%nntot))
+        allocate (phase2(wigner_seitz%nrpts_pw90, kmesh_info%nntot))
+        allocate (SAA_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, kmesh_info%nntot, 3, 3))
+
+        if (.not. allocated(SS_R)) then
+          call set_error_fatal(error, 'transl_inv_full=T for SAA_R needs SS_R', comm)
+        endif
+
+        do j = 1, num_wann
+          do i = 1, num_wann
+            r0(i, j, :) = (wigner_seitz%wannier_centres_from_AA_R(:, i) + &
+                           wigner_seitz%wannier_centres_from_AA_R(:, j))/2.0_dp
+          enddo
+        enddo
+
+        do nn2 = 1, kmesh_info%nntot
+          do j = 1, num_wann
+            do i = 1, num_wann
+              phase1(i, j, nn2) = dot_product(r0(i, j, :), kmesh_info%bk(:, nn2, 1))
+            enddo
+          enddo
+        enddo
+
+        phase1 = exp(cmplx_i*phase1)
+
+        do b = 1, 3
+          do ipol = 1, 3
+            do ik = 1, num_kpts
+              SAA_q_b(:, :, ik, :, ipol, b) = SAA_q_b(:, :, ik, :, ipol, b)*phase1(:, :, :)
+            enddo
+          enddo
+        enddo
+
+        deallocate (phase1)
+      endif
+      !
+      allocate (counts(0:mpisize(comm) - 1))
+      allocate (displs(0:mpisize(comm) - 1))
+
+      w = num_wann*num_wann
+      call comms_array_split(num_kpts, counts, displs, comm)
+      allocate (SAA_q_loc(num_wann, num_wann, counts(mpirank(comm))))
+      allocate (SAA_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
+
       do b = 1, 3
-        do a = 1, 3
-          call fourier_q_to_R(num_kpts, wigner_seitz%nrpts, wigner_seitz%irvec, kpt_latt, &
-                              SAA_q(:, :, :, a, b), SAA_R_temp(:, :, :, a, b))
+        do ipol = 1, 3
+          do nn2 = 1, kmesh_info%nntot
+            call comms_scatterv(SAA_q_loc, w*counts(mpirank(comm)), SAA_q_b(:, :, :, nn2, ipol, b), w*counts, w*displs, error, comm)
+            call fourier_loc_q_to_R(num_kpts, counts, displs, mpirank(comm), wigner_seitz%nrpts, wigner_seitz%irvec, &
+                                    kpt_latt, SAA_q_loc, SAA_R_temp)
+            call comms_reduce(SAA_R_temp(1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts, 'SUM', error, comm)
+
+            if (on_root) then
+              ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
+              call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, SAA_R_temp, SAA_R_b(:, :, :, nn2, ipol, b))
+            endif
+          enddo
         enddo
       enddo
 
+      deallocate (SAA_q_loc)
+      deallocate (SAA_R_temp)
+
+      if (on_root) then
+        deallocate (SAA_q_b)
+
+        do nn2 = 1, kmesh_info%nntot
+          do ir = 1, wigner_seitz%nrpts_pw90
+            phase2(ir, nn2) = -0.5_dp*dot_product(wigner_seitz%crvec_pw90(:, ir), kmesh_info%bk(:, nn2, 1))
+          enddo
+        enddo
+
+        phase2 = exp(cmplx_i*phase2)
+
+        do b = 1, 3
+          do ipol = 1, 3
+            do j = 1, num_wann
+              do i = 1, num_wann
+                SAA_R_b(i, j, :, :, ipol, b) = SAA_R_b(i, j, :, :, ipol, b)*phase2(:, :)
+              enddo
+            enddo
+          enddo
+        enddo
+
+        do b = 1, 3
+          do ipol = 1, 3
+            do ir = 1, wigner_seitz%nrpts_pw90
+              do j = 1, num_wann
+                do i = 1, num_wann
+                  SAA_R(i, j, ir, ipol, b) = sum(SAA_R_b(i, j, ir, :, ipol, b))
+                enddo
+              enddo
+            enddo
+          enddo
+        enddo
+
+        deallocate (SAA_R_b)
+
+        do b = 1, 3
+          do ipol = 1, 3
+            do ir = 1, wigner_seitz%nrpts_pw90
+              SAA_R(:, :, ir, ipol, b) = SAA_R(:, :, ir, ipol, b) + &
+                                         (r0(:, :, b) - 0.5_dp*wigner_seitz%crvec_pw90(b, ir))*SS_R(:, :, ir, ipol)
+            enddo
+          enddo
+        enddo
+      endif
+    else
+      allocate (SAA_q(num_wann, num_wann, num_kpts, 3, 3))
+
+      if (on_root) then
+        do b = 1, 3
+          do ipol = 1, 3
+            do ik = 1, num_kpts
+              do j = 1, num_wann
+                do i = 1, num_wann
+                  SAA_q(i, j, ik, ipol, b) = sum(SAA_q_b(i, j, ik, :, ipol, b))
+                enddo
+              enddo
+            enddo
+          enddo
+        enddo
+        !
+        deallocate (SAA_q_b)
+      endif
+      !
+      allocate (counts(0:mpisize(comm) - 1))
+      allocate (displs(0:mpisize(comm) - 1))
+
+      w = num_wann*num_wann
+      call comms_array_split(num_kpts, counts, displs, comm)
+      allocate (SAA_q_loc(num_wann, num_wann, counts(mpirank(comm))))
+      allocate (SAA_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
+
       do b = 1, 3
-        do a = 1, 3
-          call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
-                                     SAA_R_temp(:, :, :, a, b), SAA_R(:, :, :, a, b))
+        do ipol = 1, 3
+          call comms_scatterv(SAA_q_loc, w*counts(mpirank(comm)), SAA_q(:, :, :, ipol, b), w*counts, w*displs, error, comm)
+          call fourier_loc_q_to_R(num_kpts, counts, displs, mpirank(comm), wigner_seitz%nrpts, wigner_seitz%irvec, &
+                                  kpt_latt, SAA_q_loc, SAA_R_temp)
+          call comms_reduce(SAA_R_temp(1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts, 'SUM', error, comm)
+
+          if (on_root) then
+            ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
+            call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, SAA_R_temp, SAA_R(:, :, :, ipol, b))
+          endif
         enddo
       enddo
-    endif !on_root
+
+      deallocate (SAA_q_loc)
+      deallocate (SAA_q)
+      deallocate (SAA_R_temp)
+    endif
 
     call comms_bcast(SAA_R(1, 1, 1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts_pw90*3*3, error, comm)
     if (allocated(error)) return
@@ -2330,6 +3030,45 @@ contains
     op_R = op_R/real(num_kpts, dp)
 
   end subroutine fourier_q_to_R
+
+  !================================================!
+  subroutine fourier_loc_q_to_R(num_kpts, counts, displs, rank, nrpts, irvec, kpt_latt, op_q, op_R)
+    !================================================
+    !
+    !! Fourier transforms Wannier-gauge representation
+    !! of a given operator O from q-space to R-space:
+    !!
+    !! O_ij(q) --> O_ij(R) = (1/N_kpts) sum_q e^{-iqR} O_ij(q)
+    !
+    !================================================
+
+    implicit none
+
+    ! Arguments
+    real(kind=dp), intent(in) :: kpt_latt(:, :)
+    integer, intent(in) :: num_kpts, rank, counts(0:), displs(0:), nrpts, irvec(:, :)
+    complex(kind=dp), intent(in) :: op_q(:, :, :) !! Operator in q-space
+    complex(kind=dp), intent(out) :: op_R(:, :, :) !! Operator in R-space
+
+    ! local variables
+    integer :: ir, ik, ik_start, ik_end
+    real(kind=dp) :: rdotq
+    complex(kind=dp) :: phase_fac
+
+    ik_start = displs(rank) + 1
+    ik_end = displs(rank) + counts(rank)
+
+    op_R = cmplx_0
+    do ir = 1, nrpts
+      do ik = ik_start, ik_end
+        rdotq = twopi*dot_product(kpt_latt(:, ik), irvec(:, ir))
+        phase_fac = exp(-cmplx_i*rdotq)
+        op_R(:, :, ir) = op_R(:, :, ir) + phase_fac*op_q(:, :, ik - ik_start + 1)
+      enddo
+    enddo
+    op_R = op_R/real(num_kpts, dp)
+
+  end subroutine fourier_loc_q_to_R
 
   !================================================
   subroutine get_win_min(num_bands, dis_manifold, ik, win_min, have_disentangled)

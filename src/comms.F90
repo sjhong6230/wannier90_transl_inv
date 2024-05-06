@@ -150,6 +150,7 @@ module w90_comms
     module procedure comms_scatterv_real_2
     module procedure comms_scatterv_real_3
 !     module procedure comms_scatterv_cmplx
+    module procedure comms_scatterv_cmplx_3
     module procedure comms_scatterv_cmplx_4
   end interface comms_scatterv
 
@@ -214,6 +215,7 @@ module w90_comms
     module procedure comms_no_sync_scatterv_real_2
     module procedure comms_no_sync_scatterv_real_3
 !     module procedure comms_no_sync_scatterv_cmplx
+    module procedure comms_no_sync_scatterv_cmplx_3
     module procedure comms_no_sync_scatterv_cmplx_4
   end interface comms_no_sync_scatterv
 
@@ -269,7 +271,7 @@ contains
     !!
     !! one can use the following do loop to run over the needed elements, if the full array is stored
     !! on all nodes:
-    !! do i=displs(my_node_id)+1,displs(my_node_id)+counts(my_node_id)
+    !! do i=displs(my_node_id)+1,displs(my_node_id)+counts(my_node_id)x
     !!
 
     integer, intent(in) :: numpoints  !! Number of elements of the array to be scattered
@@ -1296,6 +1298,36 @@ contains
 
   end subroutine comms_no_sync_scatterv_real_3
 
+  subroutine comms_no_sync_scatterv_cmplx_3(array, localcount, rootglobalarray, counts, displs, error, comm)
+    !! Scatter complex data from root node (array of rank 3)
+    implicit none
+
+    complex(kind=dp), intent(inout) :: array(:, :, :) !! local array for getting data
+    integer, intent(in) :: localcount !! localcount elements will be fetched from the root node
+    complex(kind=dp), intent(inout) :: rootglobalarray(:, :, :) !! array on the root node from which data will be sent
+    integer, intent(in) :: counts(0:) !! how data should be partitioned, see MPI documentation or function comms_array_split
+    integer, intent(in) :: displs(0:)
+    type(w90_comm_type), intent(in) :: comm
+    type(w90_error_type), allocatable, intent(out) :: error
+
+#ifdef MPI
+    integer :: ierr
+
+    call mpi_scatterv(rootglobalarray, counts, displs, MPI_DOUBLE_COMPLEX, array, localcount, &
+                      MPI_DOUBLE_COMPLEX, root_id, comm%comm, ierr)
+
+    if (ierr .ne. MPI_SUCCESS) then
+      call set_base_error(error, 'Error in comms_scatterv_cmplx_3', code_mpi)
+      return
+    end if
+
+#else
+    !call zcopy(localcount, rootglobalarray, 1, array, 1)
+    array = rootglobalarray
+#endif
+
+  end subroutine comms_no_sync_scatterv_cmplx_3
+
   subroutine comms_no_sync_scatterv_cmplx_4(array, localcount, rootglobalarray, counts, displs, error, comm)
     !! Scatter complex data from root node (array of rank 4)
     implicit none
@@ -1842,6 +1874,25 @@ contains
     call comms_no_sync_scatterv_real_3(array, localcount, rootglobalarray, counts, displs, &
                                        error, comm)
   end subroutine comms_scatterv_real_3
+
+  subroutine comms_scatterv_cmplx_3(array, localcount, rootglobalarray, counts, displs, error, comm)
+    !! Scatter complex data from root node (array of rank 3)
+    implicit none
+
+    complex(kind=dp), intent(inout) :: array(:, :, :) !! local array for getting data
+    integer, intent(in) :: localcount !! localcount elements will be fetched from the root node
+    complex(kind=dp), intent(inout) :: rootglobalarray(:, :, :) !! array on the root node from which data will be sent
+    integer, intent(in) :: counts(0:) !! how data should be partitioned, see MPI documentation or function comms_array_split
+    integer, intent(in) :: displs(0:)
+    type(w90_comm_type), intent(in) :: comm
+    type(w90_error_type), allocatable, intent(out) :: error
+
+    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    if (allocated(error)) return
+
+    call comms_no_sync_scatterv_cmplx_3(array, localcount, rootglobalarray, counts, displs, &
+                                        error, comm)
+  end subroutine comms_scatterv_cmplx_3
 
   subroutine comms_scatterv_cmplx_4(array, localcount, rootglobalarray, counts, displs, error, comm)
     !! Scatter complex data from root node (array of rank 4)
