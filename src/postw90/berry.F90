@@ -102,7 +102,7 @@ contains
     use w90_constants, only: dp, cmplx_0, pi, pw90_physical_constants_type
     use w90_utility, only: utility_recip_lattice_base
     use w90_get_oper, only: get_HH_R, get_AA_R_effective, get_AA_R, get_BB_R, get_CC_R, get_SS_R, get_SHC_R, &
-      get_SAA_R, get_SBB_R
+      get_SH_R, get_SAA_R, get_SBB_R
     use w90_io, only: io_stopwatch_start, io_stopwatch_stop
     use w90_types, only: print_output_type, wannier_data_type, &
       dis_manifold_type, kmesh_info_type, ws_region_type, ws_distance_type, timer_list_type
@@ -409,10 +409,10 @@ contains
                        num_valence_bands, have_disentangled, seedname, stdout, timer, error, comm)
         if (allocated(error)) return
       else
-        call get_SHC_R(dis_manifold, kmesh_info, kpt_latt, print_output, pw90_oper_read, &
-                       pw90_spin_hall, SH_R, SHR_R, SR_R, v_matrix, eigval, scissors_shift, &
-                       wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, num_wann, &
-                       num_valence_bands, have_disentangled, seedname, stdout, timer, error, comm)
+        call get_SH_R(dis_manifold, kmesh_info, kpt_latt, print_output, pw90_oper_read, &
+                      pw90_spin_hall, SH_R, v_matrix, eigval, scissors_shift, &
+                      wigner_seitz, ws_distance, ws_region, num_bands, num_kpts, num_wann, &
+                      num_valence_bands, have_disentangled, seedname, stdout, timer, error, comm)
         if (allocated(error)) return
         call get_SAA_R(pw90_berry, dis_manifold, kmesh_info, kpt_latt, print_output, SS_R, SAA_R, &
                        v_matrix, scissors_shift, wigner_seitz, ws_distance, ws_region, num_bands, &
