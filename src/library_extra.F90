@@ -275,16 +275,43 @@ contains
     endif
 
     ! projections are stored in u_opt
-    call overlap_read(common_data%kmesh_info, common_data%select_proj, common_data%sitesym, common_data%u_opt, &
-                      common_data%m_matrix_local, common_data%num_bands, common_data%num_kpts, common_data%num_proj, &
-                      common_data%num_wann, common_data%print_output, common_data%print_output%timing_level, cp_pp, &
-                      common_data%gamma_only, common_data%lsitesymmetry, common_data%use_bloch_phases, &
-                      common_data%seedname, istdout, common_data%timer, common_data%dist_kpoints, error, &
-                      common_data%comm)
+    call overlap_read(common_data%kmesh_info, common_data%select_proj, common_data%u_opt, &
+                      common_data%m_matrix_local, common_data%num_bands, common_data%num_kpts, &
+                      common_data%num_proj, common_data%num_wann, common_data%print_output, &
+                      common_data%print_output%timing_level, cp_pp, common_data%use_bloch_phases, &
+                      common_data%seedname, istdout, common_data%timer, common_data%dist_kpoints, &
+                      error, common_data%comm)
     if (allocated(error)) then
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     endif
+
+    ! Check Mmn(k,b) is symmetric in m and n for gamma_only case
+    ! if (gamma_only) call overlap_check_m_symmetry()
+    !
+    ! If we don't need to disentangle we can now convert from A to U
+    ! And rotate M accordingly
+    ! Jan 2023, Jerome Jackson, moved overlap_project outside of overlap_read
+    !    if ((.not. disentanglement) .and. (.not. cp_pp) .and. (.not. use_bloch_phases)) then
+    !      if (.not. gamma_only) then
+    !        call overlap_project(sitesym, m_matrix_local, au_matrix, kmesh_info%nnlist, &
+    !                             kmesh_info%nntot, num_bands, num_kpts, num_wann, timing_level, &
+    !                             lsitesymmetry, stdout, timer, dist_k, error, comm)
+    !      else
+    !        call overlap_project_gamma(m_matrix_local, au_matrix, kmesh_info%nntot, num_wann, &
+    !                                   timing_level, stdout, timer, error, comm)
+    !      endif
+    !      if (allocated(error)) return
+    !    endif
+    !
+    !~[aam]
+    !~      if( gamma_only .and. use_bloch_phases ) then
+    !~        write(stdout,'(1x,"+",76("-"),"+")')
+    !~        write(stdout,'(3x,a)') 'WARNING: gamma_only and use_bloch_phases                 '
+    !~        write(stdout,'(3x,a)') '         M must be calculated from *real* Bloch functions'
+    !~        write(stdout,'(1x,"+",76("-"),"+")')
+    !~      end if
+    ![ysl-e]
   end subroutine overlaps
 
   subroutine read_eigvals(common_data, eigval, istdout, istderr, ierr)
