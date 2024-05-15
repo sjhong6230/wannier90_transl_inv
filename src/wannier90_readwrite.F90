@@ -1539,7 +1539,7 @@ contains
     ! projections selection
     integer :: num_select_projections
     integer, allocatable :: select_projections(:)
-    integer :: imap, ip
+    integer :: imap
 
     ! Projections
     call w90_readwrite_get_keyword(settings, 'auto_projections', found, error, comm, &

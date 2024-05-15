@@ -3641,89 +3641,87 @@ contains
       endif
     endif
 
-    if (allocated(settings%in_data)) then ! we are reading from the input file
-    do loop = 1, settings%num_lines
-      ins = index(settings%in_data(loop), trim(keyword))
-      if (ins == 0) cycle
-      in = index(settings%in_data(loop), 'begin')
-      if (in == 0 .or. in > 1) cycle
-      line_s = loop
-      if (found_s) then
-        call set_error_input(error, 'Error: Found '//trim(start_st)//' more than once in input file', comm)
-        return
-      endif
-      found_s = .true.
-    end do
-
-    do loop = 1, settings%num_lines
-      ine = index(settings%in_data(loop), trim(keyword))
-      if (ine == 0) cycle
-      in = index(settings%in_data(loop), 'end')
-      if (in == 0 .or. in > 1) cycle
-      line_e = loop
-      if (found_e) then
-        call set_error_input(error, &
-                             'w90_readwrite_get_projections: Found '//trim(end_st)//' more than once in input file', comm)
-        return
-      endif
-      found_e = .true.
-    end do
-
-    if (.not. found_e) then
-      call set_error_input(error, 'w90_readwrite_get_projections: Found '//trim(start_st) &
-                           //' but no '//trim(end_st)//' in input file', comm)
-      return
-    end if
-
-    if (line_e <= line_s) then
-      call set_error_input(error, &
-                           'w90_readwrite_get_projections: '//trim(end_st)//' comes before '//trim(start_st) &
-                           //' in input file', comm)
-      return
-    end if
-
-    dummy = settings%in_data(line_s + 1)
     lconvert = .false.
     lrandom = .false.
     lpartrandom = .false.
-    if (index(dummy, 'ang') .ne. 0) then
-      if (.not. lcount) settings%in_data(line_s) (1:maxlen) = ' '
-      line_s = line_s + 1
-    elseif (index(dummy, 'bohr') .ne. 0) then
-      if (.not. lcount) settings%in_data(line_s) (1:maxlen) = ' '
-      line_s = line_s + 1
-      lconvert = .true.
-    elseif (index(dummy, 'random') .ne. 0) then
-      if (.not. lcount) settings%in_data(line_s) (1:maxlen) = ' '
-      line_s = line_s + 1
-      if (index(settings%in_data(line_s + 1), end_st) .ne. 0) then
-        lrandom = .true.     ! all projections random
-      else
-        lpartrandom = .true. ! only some projections random
-        if (index(settings%in_data(line_s + 1), 'ang') .ne. 0) then
-          if (.not. lcount) settings%in_data(line_s) (1:maxlen) = ' '
-          line_s = line_s + 1
-        elseif (index(settings%in_data(line_s + 1), 'bohr') .ne. 0) then
-          if (.not. lcount) settings%in_data(line_s) (1:maxlen) = ' '
-          line_s = line_s + 1
-          lconvert = .true.
+
+    if (allocated(settings%in_data)) then ! we are reading from the input file
+      do loop = 1, settings%num_lines
+        ins = index(settings%in_data(loop), trim(keyword))
+        if (ins == 0) cycle
+        in = index(settings%in_data(loop), 'begin')
+        if (in == 0 .or. in > 1) cycle
+        line_s = loop
+        if (found_s) then
+          call set_error_input(error, 'Error: Found '//trim(start_st)//' more than once in input file', comm)
+          return
+        endif
+        found_s = .true.
+      end do
+
+      do loop = 1, settings%num_lines
+        ine = index(settings%in_data(loop), trim(keyword))
+        if (ine == 0) cycle
+        in = index(settings%in_data(loop), 'end')
+        if (in == 0 .or. in > 1) cycle
+        line_e = loop
+        if (found_e) then
+          call set_error_input(error, &
+                               'w90_readwrite_get_projections: Found '//trim(end_st)//' more than once in input file', comm)
+          return
+        endif
+        found_e = .true.
+      end do
+
+      if (.not. found_e) then
+        call set_error_input(error, 'w90_readwrite_get_projections: Found '//trim(start_st) &
+                             //' but no '//trim(end_st)//' in input file', comm)
+        return
+      end if
+
+      if (line_e <= line_s) then
+        call set_error_input(error, &
+                             'w90_readwrite_get_projections: '//trim(end_st)//' comes before '//trim(start_st) &
+                             //' in input file', comm)
+        return
+      end if
+
+      dummy = settings%in_data(line_s + 1)
+      if (index(dummy, 'ang') .ne. 0) then
+        if (.not. lcount) settings%in_data(line_s) (1:maxlen) = ' '
+        line_s = line_s + 1
+      elseif (index(dummy, 'bohr') .ne. 0) then
+        if (.not. lcount) settings%in_data(line_s) (1:maxlen) = ' '
+        line_s = line_s + 1
+        lconvert = .true.
+      elseif (index(dummy, 'random') .ne. 0) then
+        if (.not. lcount) settings%in_data(line_s) (1:maxlen) = ' '
+        line_s = line_s + 1
+        if (index(settings%in_data(line_s + 1), end_st) .ne. 0) then
+          lrandom = .true.     ! all projections random
+        else
+          lpartrandom = .true. ! only some projections random
+          if (index(settings%in_data(line_s + 1), 'ang') .ne. 0) then
+            if (.not. lcount) settings%in_data(line_s) (1:maxlen) = ' '
+            line_s = line_s + 1
+          elseif (index(settings%in_data(line_s + 1), 'bohr') .ne. 0) then
+            if (.not. lcount) settings%in_data(line_s) (1:maxlen) = ' '
+            line_s = line_s + 1
+            lconvert = .true.
+          endif
         endif
       endif
-    endif
 
     elseif (allocated(settings%entries)) then ! reading from setopt
-    lconvert = .false.
-    lrandom = .false.
-    lpartrandom = .false.
-    do loop = 1, settings%num_entries  ! this means the first occurance of the variable in settings is used
-      if (settings%entries(loop)%keyword == 'projections') then
-        counter = counter + 1
-        if (settings%entries(loop)%txtdata == 'bohr') lconvert = .true.
-        if (settings%entries(loop)%txtdata == 'random') lrandom = .true.
-      endif
-    enddo
-    line_s = 0
-    line_e = settings%num_entries + 1
+      do loop = 1, settings%num_entries  ! this means the first occurance of the variable in settings is used
+        if (settings%entries(loop)%keyword == 'projections') then
+          counter = counter + 1
+          if (settings%entries(loop)%txtdata == 'bohr') lconvert = .true.
+          if (settings%entries(loop)%txtdata == 'random') lrandom = .true.
+        endif
+      enddo
+      line_s = 0
+      line_e = settings%num_entries + 1
     endif ! reading from input file or entries
 
     counter = 0

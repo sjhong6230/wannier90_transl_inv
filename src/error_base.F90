@@ -22,7 +22,7 @@ module w90_error_base
   !! Codify error state with integer code and human readable string
   type w90_error_type
     integer :: code
-    character(len=256) :: message
+    character(len=128) :: message
 #ifdef W90DEV
   contains
     final :: untrapped_error

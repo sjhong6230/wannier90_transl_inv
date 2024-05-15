@@ -415,8 +415,8 @@ contains
     logical, allocatable :: kpath_print_first_point(:)
 
     character(len=20), allocatable :: glabel(:)
-    character(len=10), allocatable :: xlabel(:)
-    character(len=10), allocatable :: ctemp(:)
+    character(len=20), allocatable :: xlabel(:)
+    character(len=20), allocatable :: ctemp(:)
 
     ! mpi variables
     integer ::  my_node_id, num_nodes, size_rdist, size_ndeg
@@ -1923,8 +1923,6 @@ contains
                 end do
               end do
             end do
-            wmod = wmod/sqrt(real(wmod)**2 + aimag(wmod)**2)
-            wann_func(:, :, :, loop_w) = wann_func(:, :, :, loop_w)/wmod
           end do
         endif
       endif
