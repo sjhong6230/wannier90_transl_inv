@@ -29,7 +29,7 @@ module w90_kmesh
   use w90_constants, only: dp
   use w90_types, only: max_shells, num_nnmax ! used for dimensioning
   use w90_error, only: w90_error_type, set_error_alloc, set_error_dealloc, set_error_fatal, &
-    set_error_input, set_error_fatal, set_error_file
+    set_error_input, set_error_file
   use w90_comms, only: w90_comm_type
 
   implicit none
@@ -482,8 +482,8 @@ contains
               lmn_temp(2) = floor(kpt_latt(2, nkp) + bk_latt(2) + 1.e-6_dp)
               lmn_temp(3) = floor(kpt_latt(3, nkp) + bk_latt(3) + 1.e-6_dp)
               vkpp2 = matmul(lmn_temp, recip_lattice) !G_lmn vector
+              vkpp = kpt_cart(:, nkp) + bk_local(:, nnx2, nkp) - vkpp2 ! k_2 = k_1 + Nb - G_lmn
               do nkp2 = 1, num_kpts
-                vkpp = kpt_cart(:, nkp) + bk_local(:, nnx2, nkp) - vkpp2 ! k_2 = k_1 + Nb - G_lmn
                 call utility_compar(kpt_cart(:, nkp2), vkpp, ifpos, ifneg)
                 if (ifpos .eq. 1) then
                   counter = counter + 1
