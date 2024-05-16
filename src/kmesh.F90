@@ -569,7 +569,7 @@ contains
         do ndnnx = 1, num_first_shells
           ndnn = kmesh_input%shell_list(ndnnx)
           if (print_output%iprint > 0) then
-            write (stdout, '(1x,a,20x,i3,a,i2,13x,i3,33x,a)') '|', ndnn, ' x', ndnn, nnshell(1, ndnn), '|'
+            write (stdout, '(1x,a,20x,i3,a,i2,13x,i3,33x,a)') '|', i, ' x', ndnn, nnshell(1, ndnn), '|'
           endif
         end do
       end do
