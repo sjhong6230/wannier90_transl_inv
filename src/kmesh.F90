@@ -140,8 +140,8 @@ contains
       return
     endif
 
-    call utility_inverse_mat(recip_lattice, inv_lattice)
     call utility_recip_lattice(real_lattice, recip_lattice, volume, error, comm)
+    call utility_inverse_mat(recip_lattice, inv_lattice)
     if (print_output%iprint > 0) write (stdout, '(/1x,a)') &
       '*---------------------------------- K-MESH ----------------------------------*'
 
