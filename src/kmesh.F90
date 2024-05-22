@@ -555,7 +555,7 @@ contains
       do ndnnx = 1, kmesh_input%num_shells
         ndnn = kmesh_input%shell_list(ndnnx)
         if (print_output%iprint > 0) then
-            write (stdout, '(1x,a,24x,i3,13x,i3,33x,a)') '|', ndnn, nnshell(1, ndnn), '|'
+          write (stdout, '(1x,a,24x,i3,13x,i3,33x,a)') '|', ndnn, nnshell(1, ndnn), '|'
         endif
       end do
     else
@@ -1452,7 +1452,6 @@ contains
     endif
     target = 0.0_dp; target(1) = 1.0_dp; target(3) = 1.0_dp; target(6) = 1.0_dp
 
-
     if (print_output%timing_level > 1) call io_stopwatch_start('kmesh: shell_automatic', timer)
     allocate (bvector(3, maxval(multi), kmesh_input%max_shells_h), stat=ierr)
     if (ierr /= 0) then
@@ -1703,8 +1702,6 @@ contains
         call set_error_dealloc(error, 'Error deallocating singv in kmesh_shell_automatic', comm)
         return
       endif
-
-
 
       deallocate (num_x, stat=ierr)
       if (ierr /= 0) then
