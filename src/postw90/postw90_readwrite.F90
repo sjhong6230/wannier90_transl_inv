@@ -168,8 +168,7 @@ contains
     if (allocated(error)) return
     call w90_readwrite_read_exclude_bands(settings, exclude_bands, num_exclude_bands, error, comm)
     if (allocated(error)) return
-    call w90_readwrite_read_num_bands(settings, effective_model, num_bands, num_wann, stdout, &
-                                      error, comm)
+    call w90_readwrite_read_num_bands(settings, effective_model, num_bands, num_wann, error, comm)
     if (allocated(error)) return
     disentanglement = (num_bands > num_wann)
     call w90_readwrite_read_mp_grid(settings, effective_model, mp_grid, num_kpts, error, comm)
@@ -224,7 +223,8 @@ contains
     dis_manifold%win_max = 0.0_dp
     if (eig_found) dis_manifold%win_min = minval(eigval)
     if (eig_found) dis_manifold%win_max = maxval(eigval)
-    call w90_readwrite_read_dis_manifold(settings, eig_found, dis_manifold, error, comm)
+    call w90_readwrite_read_dis_manifold(settings, dis_manifold, error, comm)
+
     if (allocated(error)) return
     call w90_wannier90_readwrite_read_geninterp(settings, pw90_geninterp, error, comm)
     if (allocated(error)) return

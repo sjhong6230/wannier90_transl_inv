@@ -75,7 +75,7 @@ contains
     call w90_get_fortran_stderr(istderr)
     call w90_get_fortran_stdout(istdout)
     call c_f_pointer(common_cptr, common_fptr)
-    call w90_input_setopt(common_fptr, seedname, comm, istdout, istderr, ierr)
+    call w90_input_setopt(common_fptr, seedname, istdout, istderr, ierr)
   end subroutine cinput_setopt
 
   subroutine cinput_reader(common_cptr, ierr) bind(c)

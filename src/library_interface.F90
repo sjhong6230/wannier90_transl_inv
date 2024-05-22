@@ -183,6 +183,7 @@ module w90_library
     module procedure w90_set_option_i2d
     module procedure w90_set_option_r1d
     module procedure w90_set_option_r2d
+    module procedure w90_set_option_c2d
     module procedure w90_set_option_real
   end interface w90_set_option
 
@@ -245,6 +246,8 @@ contains
       return
     endif
 
+    ! input_setopt() processes options stored in a container, common_data%settings
+    ! meanwhile the .win file contents are stored in common_data%in_data, which should be empty here
     if (allocated(common_data%settings%in_data)) then
       call set_error_fatal(error, ' readinput and setopt clash at input_setopt call', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
@@ -338,7 +341,7 @@ contains
       return
     endif
 
-    ! clear any settings (from settings interface not .win file)
+    ! clear settings container (from settings interface not .win file)
     deallocate (common_data%settings%entries, stat=ierr)
     if (ierr /= 0) then
       call set_error_alloc(error, 'Error in deallocating entries data in input_setopt() library call', common_data%comm)
@@ -437,6 +440,7 @@ contains
 
     ! local variables
     type(w90_error_type), allocatable :: error
+    integer :: ioff
 
     ierr = 0
 
@@ -463,8 +467,15 @@ contains
     if (common_data%dis_manifold%win_min == -huge(0.0_dp)) common_data%dis_manifold%win_min = minval(common_data%eigval)
     if (common_data%dis_manifold%win_max == huge(0.0_dp)) common_data%dis_manifold%win_max = maxval(common_data%eigval)
     if (common_data%dis_manifold%frozen_states) then
-      if (common_data%dis_manifold%froz_min == -huge(0.0_dp)) &
-        common_data%dis_manifold%froz_min = common_data%dis_manifold%win_min
+      !write(*,*) shape(common_data%eigval)
+      !write(*,*) shape(common_data%dis_manifold%lwindow)
+      if (common_data%dis_manifold%froz_min == -huge(0.0_dp)) then
+        ioff = maxval(common_data%exclude_bands)
+        common_data%dis_manifold%froz_min = minval(common_data%eigval(ioff + 1, :))
+      endif
+      !common_data%dis_manifold%froz_min = minval(common_data%eigval, mask=common_data%dis_manifold%lwindow)
+      !write(*,*)common_data%dis_manifold%froz_min,allocated(common_data%dis_manifold%lwindow),&
+      !  count(common_data%dis_manifold%lwindow)
     endif
 
     if (common_data%num_bands > common_data%num_wann) then
@@ -879,6 +890,24 @@ contains
     if (common_data%settings%num_entries == common_data%settings%num_entries_max) call expand_settings(common_data%settings)
   endsubroutine w90_set_option_r2d
 
+  subroutine w90_set_option_c2d(common_data, keyword, arr)
+    use w90_readwrite, only: init_settings, expand_settings
+
+    implicit none
+
+    character(*), intent(in) :: keyword
+    character(len=*), intent(in) :: arr(:)
+    type(lib_common_type), intent(inout) :: common_data
+    integer :: i
+
+    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
+    i = common_data%settings%num_entries + 1
+    common_data%settings%entries(i)%keyword = keyword
+    common_data%settings%entries(i)%c2d = arr
+    common_data%settings%num_entries = i + 1
+    if (common_data%settings%num_entries == common_data%settings%num_entries_max) call expand_settings(common_data%settings)
+  endsubroutine w90_set_option_c2d
+
   subroutine w90_set_option_real(common_data, keyword, rval)
     use w90_readwrite, only: init_settings, expand_settings
 
@@ -1009,7 +1038,7 @@ contains
     integer, intent(in) :: istdout, istderr
 
     ! probably the remaining variables find limited use, allow them to be absent
-    integer, intent(inout), optional :: rad(:)
+    integer, intent(inout) :: rad(:)
     real(kind=dp), intent(inout) :: sqa(:, :), z(:, :), x(:, :) !, zona(:)
 
     ! local variables
@@ -1026,6 +1055,8 @@ contains
     endif
 
     n = size(common_data%proj_input)
+
+    write (*, *) "expecting: ", n
 
     ! check allocation of main output arrays
     if (size(l) < n) then
@@ -1089,6 +1120,8 @@ contains
       z(:, ip) = proj%z(:)
       x(:, ip) = proj%x(:)
       rad(ip) = proj%radial
+
+      write (*, *) " projector   : ", l(ip), m(ip), s(ip)
       !if (present(zona)) zona(ip) = proj%zona
     enddo
   end subroutine w90_get_proj

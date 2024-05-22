@@ -122,20 +122,19 @@ contains
     total_bands = 0
     call w90_readwrite_read_total_bands(settings, total_bands, error, comm)
     if (allocated(error)) return
-
     if (total_bands > 0) then
       num_bands = total_bands - num_exclude_bands
     else
-      ! fixme, flag up that it is a mistake to set total bands and num_bands
-      call w90_readwrite_read_num_bands(settings, .false., num_bands, num_wann, stdout, error, comm)
+      call w90_readwrite_read_num_bands(settings, .false., num_bands, num_wann, error, comm)
       if (allocated(error)) return
     endif
 
     disentanglement = (num_bands > num_wann)
 
-    num_proj = num_wann !default, no projections specified
-
     call w90_readwrite_read_mp_grid(settings, .false., mp_grid, num_kpts, error, comm)
+    if (allocated(error)) return
+
+    call w90_readwrite_read_distk(settings, distk, num_kpts, error, comm)
     if (allocated(error)) return
 
     call w90_readwrite_read_kmesh_data(settings, kmesh_input, error, comm)
@@ -151,21 +150,22 @@ contains
     call w90_readwrite_read_system(settings, w90_system, error, comm)
     if (allocated(error)) return
 
+    num_proj = num_wann !default, no projections specified
+
     call utility_inverse_mat(real_lattice, inv_lattice)
     call w90_wannier90_readwrite_read_projections(settings, proj, proj_input, use_bloch_phases, &
                                                   lhasproj, wann_control%guiding_centres%enable, &
                                                   select_proj, num_proj, atom_data, inv_lattice, &
                                                   num_wann, gamma_only, w90_system%spinors, bohr, &
                                                   stdout, error, comm)
+    if (allocated(error)) return
+
     if (allocated(proj)) then
       allocate (wann_control%guiding_centres%centres(3, num_proj))
       do ip = 1, num_proj
         wann_control%guiding_centres%centres(:, ip) = proj(ip)%site(:)
       enddo
     endif
-    if (allocated(error)) return
-
-    call w90_readwrite_read_distk(settings, distk, num_kpts, error, comm)
 
   end subroutine w90_wannier90_readwrite_read_special
 
@@ -271,25 +271,9 @@ contains
                                     energy_unit, bohr, error, comm)
       if (allocated(error)) return
 
-      !call w90_readwrite_read_num_wann(settings, num_wann, error, comm)
-      !if (allocated(error)) return
-
-      !call w90_readwrite_read_exclude_bands(settings, exclude_bands, num_exclude_bands, error, comm)
-      !if (allocated(error)) return
-
-      !call w90_readwrite_read_num_bands(settings, .false., num_bands, num_wann, stdout, error, comm)
-      !if (allocated(error)) return
-      !disentanglement = (num_bands > num_wann)
-
-      !call w90_readwrite_read_lattice(settings, real_lattice, bohr, error, comm)
-      !if (allocated(error)) return
-
       call w90_wannier90_readwrite_read_wannierise(settings, wann_control, num_wann, &
                                                    w90_extra_io%ccentres_frac, stdout, error, comm)
       if (allocated(error)) return
-
-      !call w90_readwrite_read_mp_grid(settings, .false., mp_grid, num_kpts, error, comm)
-      !if (allocated(error)) return
 
       call w90_readwrite_read_gamma_only(settings, gamma_only, num_kpts, error, comm)
       if (allocated(error)) return
@@ -300,9 +284,6 @@ contains
 
       call w90_wannier90_readwrite_read_restart(settings, w90_calculation, seedname, error, comm)
       if (allocated(error)) return
-
-      !call w90_readwrite_read_system(settings, w90_system, error, comm)
-      !if (allocated(error)) return
 
       call w90_readwrite_read_kpath(settings, kpoint_path, has_kpath, w90_calculation%bands_plot, &
                                     error, comm)
@@ -349,7 +330,7 @@ contains
     if (allocated(error)) return
 
     if (.not. (w90_calculation%transport .and. tran%read_ht)) then
-      call w90_readwrite_read_dis_manifold(settings, .true., dis_manifold, error, comm)
+      call w90_readwrite_read_dis_manifold(settings, dis_manifold, error, comm)
       if (allocated(error)) return
 
       call w90_wannier90_readwrite_read_disentangle(settings, dis_control, dis_spheres, num_bands, &
@@ -362,35 +343,6 @@ contains
       call w90_wannier90_readwrite_read_bloch_phase(settings, use_bloch_phases, disentanglement, &
                                                     error, comm)
       if (allocated(error)) return
-
-      !call w90_readwrite_read_kmesh_data(settings, kmesh_input, error, comm)
-      !if (allocated(error)) return
-
-      !call utility_recip_lattice(real_lattice, recip_lattice, volume, error, comm)
-      !if (allocated(error)) return
-
-      !call utility_inverse_mat(real_lattice, inv_lattice)
-
-      !call w90_readwrite_read_kpoints(settings, .false., kpt_latt, num_kpts, bohr, error, comm)
-      !if (allocated(error)) return
-
-      !call w90_wannier90_readwrite_read_explicit_kpts(settings, w90_calculation, kmesh_info, &
-      !                                                num_kpts, bohr, error, comm)
-      !if (allocated(error)) return
-
-      !call w90_wannier90_readwrite_read_global_kmesh(global_kmesh_set, kmesh_spacing, kmesh, recip_lattice, &
-      !                             stdout, seedname)
-      !call w90_readwrite_read_atoms(settings, atom_data, real_lattice, bohr, error, comm)
-      !if (allocated(error)) return
-
-      !call w90_wannier90_readwrite_read_projections(settings, proj, proj_input, use_bloch_phases, lhasproj, &
-      !                                              wann_control%guiding_centres%enable, &
-      !                                              select_proj, num_proj, atom_data, inv_lattice, &
-      !                                              num_bands, num_wann, gamma_only, &
-      !                                              w90_system%spinors, bohr, stdout, error, comm)
-      !if (allocated(error)) return
-
-      ! projections needs to be allocated before reading constrained centres
 
       if (wann_control%constrain%constrain) then
         call w90_wannier90_readwrite_read_constrained_centres(settings, w90_extra_io%ccentres_frac, &
@@ -1529,12 +1481,15 @@ contains
                                                       gamma_only, spinors, bohr, stdout, error, &
                                                       comm)
     !================================================!
+    ! Obtain projector definitions
     use w90_error, only: w90_error_type
 
     implicit none
 
+    ! arguments
     integer, intent(in) :: num_wann
     integer, intent(inout) :: num_proj
+    integer, intent(in) :: stdout
     logical, intent(in) :: gamma_only
     logical, intent(in) :: spinors
     logical, intent(in) :: use_bloch_phases, guiding_centres
@@ -1548,13 +1503,15 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    integer, intent(in) :: stdout
+    ! local variables
     integer :: i, j, i_temp, loop, ierr
     logical :: found
     ! projections selection
     integer :: num_select_projections
     integer, allocatable :: select_projections(:)
     integer :: imap
+
+    lhasproj = .false.
 
     ! Projections
     call w90_readwrite_get_keyword(settings, 'auto_projections', found, error, comm, &
@@ -1590,15 +1547,13 @@ contains
         return
       endif
 
-      call w90_readwrite_get_projections(settings, num_proj, atom_data, num_wann, proj_input, &
-                                         recip_lattice, .true., spinors, bohr, stdout, error, comm)
-      ! count number of projections first
-      !write(*,*)"Projections found: ",num_proj
-      call w90_readwrite_get_projections(settings, num_proj, atom_data, num_wann, proj_input, &
-                                         recip_lattice, .false., spinors, bohr, stdout, error, comm)
-      !do ip = 1, num_proj
-      !  write(*,*)"site,l,m: ",proj_input(ip)%site,proj_input(ip)%l,proj_input(ip)%m
-      !enddo
+      if (atom_data%num_species > 0) then
+        ! only read projections if atom positions are known
+        call w90_readwrite_get_projections(settings, num_proj, atom_data, num_wann, proj_input, &
+                                           recip_lattice, .false., spinors, bohr, stdout, error, comm)
+        if (allocated(error)) return
+        lhasproj = .true.
+      endif
     endif
 
     num_select_projections = num_proj !num proj is the size of proj_input
@@ -1683,7 +1638,7 @@ contains
         endif
         proj(imap) = proj_input(loop)
       enddo
-    endif
+    endif !lhasproj
 
   end subroutine w90_wannier90_readwrite_read_projections
 

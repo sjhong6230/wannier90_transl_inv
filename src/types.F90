@@ -249,6 +249,7 @@ module w90_types
     ! as different types; otherwise reshape, etc.
     character(len=:), allocatable :: keyword ! token
     character(len=:), allocatable :: txtdata ! text data item
+    character(len=:), allocatable :: c2d(:)
     ! integer data
     integer, allocatable :: i1d(:)
     integer, allocatable :: i2d(:, :)
