@@ -1065,10 +1065,10 @@ contains
     return
 
 1000 format(2x, 'WF centre and spread', &
-&       i5, 2x, '(', f20.15, ',', f20.15, ',', f20.15, ' )', f20.15)
+&       i5, 2x, '(', f10.6, ',', f10.6, ',', f10.6, ' )', f15.8)
 
 1001 format(2x, 'Sum of centres and spreads', &
-&       1x, '(', f20.15, ',', f20.15, ',', f20.15, ' )', f20.15)
+&       1x, '(', f10.6, ',', f10.6, ',', f10.6, ' )', f15.8)
 
   contains
 
