@@ -52,6 +52,7 @@ contains
                                                   kpt_latt, wann_control, proj, proj_input, &
                                                   select_proj, w90_system, w90_calculation, &
                                                   real_lattice, bohr, mp_grid, num_bands, &
+                                                  exclude_bands, &
                                                   num_kpts, num_proj, num_wann, gamma_only, &
                                                   lhasproj, use_bloch_phases, distk, stdout, &
                                                   error, comm)
@@ -83,6 +84,7 @@ contains
     type(wann_control_type), intent(inout) :: wann_control
     type(w90_calculation_type), intent(inout) :: w90_calculation !check if really needed??
 
+    integer, allocatable, intent(inout) :: exclude_bands(:)
     integer, allocatable, intent(inout) :: distk(:)
     integer, intent(inout) :: mp_grid(3)
     integer, intent(inout) :: num_bands
@@ -103,6 +105,7 @@ contains
     logical :: disentanglement
     real(kind=dp) :: inv_lattice(3, 3)
     integer :: ip
+    integer :: num_exclude_bands, total_bands
 
     call w90_readwrite_read_lattice(settings, real_lattice, bohr, error, comm)
     if (allocated(error)) return
@@ -113,8 +116,21 @@ contains
     call w90_readwrite_read_num_wann(settings, num_wann, error, comm)
     if (allocated(error)) return
 
-    call w90_readwrite_read_num_bands(settings, .false., num_bands, num_wann, stdout, error, comm)
+    call w90_readwrite_read_exclude_bands(settings, exclude_bands, num_exclude_bands, error, comm)
     if (allocated(error)) return
+
+    total_bands = 0
+    call w90_readwrite_read_total_bands(settings, total_bands, error, comm)
+    if (allocated(error)) return
+
+    if (total_bands > 0) then
+      num_bands = total_bands - num_exclude_bands
+    else
+      ! fixme, flag up that it is a mistake to set total bands and num_bands
+      call w90_readwrite_read_num_bands(settings, .false., num_bands, num_wann, stdout, error, comm)
+      if (allocated(error)) return
+    endif
+
     disentanglement = (num_bands > num_wann)
 
     num_proj = num_wann !default, no projections specified
@@ -155,7 +171,7 @@ contains
 
   !================================================!
   subroutine w90_wannier90_readwrite_read(settings, band_plot, dis_control, dis_spheres, &
-                                          dis_manifold, exclude_bands, fermi_energy_list, &
+                                          dis_manifold, fermi_energy_list, &
                                           fermi_surface_data, &
                                           output_file, wvfn_read, wann_control, &
                                           real_space_ham, kpoint_path, w90_system, &
@@ -202,7 +218,6 @@ contains
     type(ws_region_type), intent(inout) :: ws_region
     type(wvfn_read_type), intent(inout) :: wvfn_read
 
-    integer, allocatable, intent(inout) :: exclude_bands(:)
     integer, intent(inout) :: num_bands
     integer, intent(inout) :: num_kpts
     integer, intent(inout) :: num_wann
@@ -259,8 +274,8 @@ contains
       !call w90_readwrite_read_num_wann(settings, num_wann, error, comm)
       !if (allocated(error)) return
 
-      call w90_readwrite_read_exclude_bands(settings, exclude_bands, num_exclude_bands, error, comm)
-      if (allocated(error)) return
+      !call w90_readwrite_read_exclude_bands(settings, exclude_bands, num_exclude_bands, error, comm)
+      !if (allocated(error)) return
 
       !call w90_readwrite_read_num_bands(settings, .false., num_bands, num_wann, stdout, error, comm)
       !if (allocated(error)) return
