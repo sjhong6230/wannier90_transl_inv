@@ -149,6 +149,7 @@ module w90_library
   end type lib_common_type
 
   !private :: w90_create_kmesh ! trigers the generation of k-mesh info (as do get_nn*)
+  public :: input_print_details
   public :: w90_create_kmesh ! trigers the generation of k-mesh info (as do get_nn*)
   public :: w90_disentangle ! perform disentanglement
   public :: w90_get_centres ! get wannier centers
@@ -256,6 +257,10 @@ contains
       call set_error_fatal(error, ' input_setopt called with no input', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
+      !else if (.not. allocated(common_data%dist_kpoints)) then
+      !  call set_error_fatal(error, ' input_setopt called but distk unallocated', common_data%comm)
+      !  call prterr(error, ierr, istdout, istderr, common_data%comm)
+      !  return
     endif
 
     common_data%seedname = seedname ! set seedname for input/output files
@@ -268,6 +273,7 @@ contains
                                               common_data%w90_calculation, &
                                               common_data%real_lattice, common_data%physics%bohr, &
                                               common_data%mp_grid, common_data%num_bands, &
+                                              common_data%exclude_bands, &
                                               common_data%num_kpts, common_data%num_proj, &
                                               common_data%num_wann, common_data%gamma_only, &
                                               common_data%lhasproj, &
@@ -321,7 +327,7 @@ contains
     ! read all other variables
     call w90_wannier90_readwrite_read(common_data%settings, common_data%band_plot, &
                                       common_data%dis_control, common_data%dis_spheres, &
-                                      common_data%dis_manifold, common_data%exclude_bands, &
+                                      common_data%dis_manifold, &
                                       common_data%fermi_energy_list, &
                                       common_data%fermi_surface_data, common_data%output_file, &
                                       common_data%wvfn_read, common_data%wann_control, &
@@ -396,7 +402,7 @@ contains
     ! set options corresponding to string array from .win file
     call w90_wannier90_readwrite_read(common_data%settings, common_data%band_plot, &
                                       common_data%dis_control, common_data%dis_spheres, &
-                                      common_data%dis_manifold, common_data%exclude_bands, &
+                                      common_data%dis_manifold, &
                                       common_data%fermi_energy_list, &
                                       common_data%fermi_surface_data, common_data%output_file, &
                                       common_data%wvfn_read, common_data%wann_control, &
@@ -469,8 +475,9 @@ contains
     if (common_data%dis_manifold%frozen_states) then
       !write(*,*) shape(common_data%eigval)
       !write(*,*) shape(common_data%dis_manifold%lwindow)
-      if (common_data%dis_manifold%froz_min == -huge(0.0_dp)) then
+      if (common_data%dis_manifold%froz_min == -huge(0.0_dp) .and. allocated(common_data%exclude_bands)) then
         ioff = maxval(common_data%exclude_bands)
+        ioff = 0 !fixme
         common_data%dis_manifold%froz_min = minval(common_data%eigval(ioff + 1, :))
       endif
       !common_data%dis_manifold%froz_min = minval(common_data%eigval, mask=common_data%dis_manifold%lwindow)
@@ -754,8 +761,7 @@ contains
   end subroutine w90_set_eigval
 
   subroutine w90_set_constant_bohr_to_ang(common_data, bohr_to_angstrom)
-    ! used to set the bohr_to_angstrom value as used in the SCF code
-
+    !! used to set the bohr_to_angstrom value as used in the SCF code
     implicit none
 
     type(lib_common_type), intent(inout) :: common_data
@@ -927,6 +933,7 @@ contains
   endsubroutine w90_set_option_real
 
   subroutine w90_create_kmesh(common_data, istdout, istderr, ierr)
+    !! causes w90 to calculate finite difference neighbour lists
     use w90_error_base, only: w90_error_type
     use w90_kmesh, only: kmesh_get, kmesh_sort
 
@@ -958,15 +965,19 @@ contains
   end subroutine w90_create_kmesh
 
   subroutine w90_get_nn(common_data, nn, istdout, istderr, ierr)
+    !! probe w90 library for number of finite difference k-point neighbours
     implicit none
 
     ! arguments
     integer, intent(out) :: nn, ierr
+    !! nn is the number of neighbours in F.D. scheme
     integer, intent(in) :: istdout, istderr
     type(lib_common_type), intent(inout) :: common_data
+    !! library data object
 
     if (.not. common_data%setup_complete) then
       call w90_create_kmesh(common_data, istdout, istderr, ierr)
+      !! setup k-mesh (b vectors) if not already done (sets setup_complete)
       if (ierr > 0) return
     endif
 
@@ -974,14 +985,18 @@ contains
   end subroutine w90_get_nn
 
   subroutine w90_get_nnkp(common_data, nnkp, istdout, istderr, ierr)
+    !! probe w90 library for finite difference k-point neighbour indices
     implicit none
 
     integer, intent(out) :: nnkp(:, :), ierr
+    !! nnkp must be dimensioned (n_neighbours, n_fbz)
     integer, intent(in) :: istdout, istderr
     type(lib_common_type), intent(inout) :: common_data
+    !! library data object
 
     if (.not. common_data%setup_complete) then
       call w90_create_kmesh(common_data, istdout, istderr, ierr)
+      !! setup k-mesh (b vectors) if not already done (sets setup_complete)
       if (ierr > 0) return
     endif
 
@@ -989,16 +1004,18 @@ contains
   end subroutine w90_get_nnkp
 
   subroutine w90_get_gkpb(common_data, gkpb, istdout, istderr, ierr)
-    ! gkpb is the triple of reciprocal lattice translations to correct phase in k'= k+b
-    ! gkpb should be dimensioned (3,nk,nnb)
+    !! probe w90 library for the triple of reciprocal lattice translations determining phase in k'= k+b
     implicit none
 
     integer, intent(out) :: gkpb(:, :, :), ierr
+    !! gkpb must be dimensioned (3,nk,nnb)
     integer, intent(in) :: istdout, istderr
     type(lib_common_type), intent(inout) :: common_data
+    !! library data object
 
     if (.not. common_data%setup_complete) then
       call w90_create_kmesh(common_data, istdout, istderr, ierr)
+      !! setup k-mesh (b vectors) if not already done (sets setup_complete)
       if (ierr > 0) return
     endif
 
@@ -1006,40 +1023,49 @@ contains
   end subroutine w90_get_gkpb
 
   subroutine w90_get_centres(common_data, centres)
+    !! probes w90 library for (current) wannier centres
     implicit none
 
     real(kind=dp), intent(out) :: centres(:, :)
+    !! must be allocated with size >= n_wannier
     type(lib_common_type), intent(in) :: common_data
+    !! library data object
 
     centres = common_data%wannier_data%centres
   endsubroutine w90_get_centres
 
   subroutine w90_get_spreads(common_data, spreads)
+    !! probes w90 library for (current) wannier spreads
     implicit none
 
     real(kind=dp), intent(out) :: spreads(:)
+    !! must be allocated with size >= n_wannier
     type(lib_common_type), intent(in) :: common_data
+    !! library data object
 
     spreads = common_data%wannier_data%spreads
   endsubroutine w90_get_spreads
 
-  subroutine w90_get_proj(common_data, n, site, l, m, s, rad, x, z, sqa, istdout, istderr, ierr)
+  subroutine w90_get_proj(common_data, n, site, l, m, s, rad, x, z, sqa, zona, istdout, istderr, ierr)
+    !! probes library data object and returns arrays describing a list of projections
+    !! projectors defined either in .win file or passed (using same syntax) through w90_setopt
+    !! array arguments assumed allocated at call
+    !! array arguments must have length >= number of projectors (checked here)
     use w90_error, only: w90_error_type, set_error_fatal
     implicit none
-
-    ! returns arrays describing a list of projections derived from the .win input file
-    ! n specifies the number of projections returned
-    ! all other arguments should be of length >= num_band (the maximum possible size?)
-    integer, intent(inout) :: n, l(:), m(:), s(:)
-    real(kind=dp), intent(inout) :: site(:, :)
-
-    type(lib_common_type), intent(in), target :: common_data
-    integer, intent(out) :: ierr
     integer, intent(in) :: istdout, istderr
-
-    ! probably the remaining variables find limited use, allow them to be absent
+    integer, intent(inout) :: n, l(:), m(:), s(:)
+    !! number of projectors, angular, orbital and spin numbers
     integer, intent(inout) :: rad(:)
-    real(kind=dp), intent(inout) :: sqa(:, :), z(:, :), x(:, :) !, zona(:)
+    !! radial function defining projector
+    integer, intent(out) :: ierr
+    !! ierr returned > 0 in case of error
+    real(kind=dp), intent(inout) :: site(:, :)
+    !! projector origin (kind, site of kind)
+    real(kind=dp), intent(inout) :: sqa(:, :), z(:, :), x(:, :), zona(:)
+    !! spin quantisation axis, z- an x-axes
+    type(lib_common_type), intent(in), target :: common_data
+    !! library data object
 
     ! local variables
     integer :: ip
@@ -1056,73 +1082,61 @@ contains
 
     n = size(common_data%proj_input)
 
-    write (*, *) "expecting: ", n
-
     ! check allocation of main output arrays
     if (size(l) < n) then
       call set_error_fatal(error, 'Array argument l in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
-    endif
-    if (size(m) < n) then
+    else if (size(m) < n) then
       call set_error_fatal(error, 'Array argument m in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
-    endif
-    if (size(s) < n) then
+    else if (size(s) < n) then
       call set_error_fatal(error, 'Array argument s in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
-    endif
-    if (size(site, 2) < n) then
+    else if (size(site, 2) < n) then
       call set_error_fatal(error, 'Array argument site in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
-    endif
-    if (size(sqa, 2) < n) then
-      call set_error_fatal(error, 'Optional array argument sqa in get_proj() call is insufficiently sized', common_data%comm)
+    else if (size(sqa, 2) < n) then
+      call set_error_fatal(error, 'Array argument sqa in get_proj() call is insufficiently sized', common_data%comm)
+      call prterr(error, ierr, istdout, istderr, common_data%comm)
+      return
+    else if (size(sqa, 2) < n) then
+      call set_error_fatal(error, 'Array argument sqa in get_proj() call is insufficiently sized', common_data%comm)
+      call prterr(error, ierr, istdout, istderr, common_data%comm)
+      return
+    else if (size(z, 2) < n) then
+      call set_error_fatal(error, 'Array argument z in get_proj() call is insufficiently sized', common_data%comm)
+      call prterr(error, ierr, istdout, istderr, common_data%comm)
+      return
+    elseif (size(x, 2) < n) then
+      call set_error_fatal(error, 'Array argument x in get_proj() call is insufficiently sized', common_data%comm)
+      call prterr(error, ierr, istdout, istderr, common_data%comm)
+      return
+    else if (size(rad) < n) then
+      call set_error_fatal(error, 'Array argument rad in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     endif
-    if (size(sqa, 2) < n) then
-      call set_error_fatal(error, 'Optional array argument sqa in get_proj() call is insufficiently sized', common_data%comm)
+    if (size(zona) < n) then
+      call set_error_fatal(error, 'Array argument zona in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     endif
-    if (size(z, 2) < n) then
-      call set_error_fatal(error, 'Optional array argument z in get_proj() call is insufficiently sized', common_data%comm)
-      call prterr(error, ierr, istdout, istderr, common_data%comm)
-      return
-    endif
-    if (size(x, 2) < n) then
-      call set_error_fatal(error, 'Optional array argument x in get_proj() call is insufficiently sized', common_data%comm)
-      call prterr(error, ierr, istdout, istderr, common_data%comm)
-      return
-    endif
-    if (size(rad) < n) then
-      call set_error_fatal(error, 'Optional array argument rad in get_proj() call is insufficiently sized', common_data%comm)
-      call prterr(error, ierr, istdout, istderr, common_data%comm)
-      return
-    endif
-    !if (present(zona) .and. size(zona) < n) then
-    !  call set_error_fatal(error, 'Optional array argument zona in get_proj() call is insufficiently sized', common_data%comm)
-    !  call prterr(error, ierr, istdout, istderr, common_data%comm)
-    !  return
-    !endif
 
     do ip = 1, n
       proj => common_data%proj_input(ip)
       l(ip) = proj%l
       m(ip) = proj%m
       s(ip) = proj%s
-      site(:, ip) = proj%site(:)
-      sqa(:, ip) = proj%s_qaxis(:)
-      z(:, ip) = proj%z(:)
-      x(:, ip) = proj%x(:)
+      site(1:3, ip) = proj%site(1:3)
+      sqa(1:3, ip) = proj%s_qaxis(1:3)
+      z(1:3, ip) = proj%z(1:3)
+      x(1:3, ip) = proj%x(1:3)
       rad(ip) = proj%radial
-
-      write (*, *) " projector   : ", l(ip), m(ip), s(ip)
-      !if (present(zona)) zona(ip) = proj%zona
+      zona(ip) = proj%zona
     enddo
   end subroutine w90_get_proj
 
@@ -1140,4 +1154,59 @@ contains
     common_data%comm%comm = comm
   end subroutine w90_set_comm
 
+  subroutine input_print_details(common_data, istdout, istderr, ierr)
+    use w90_error_base, only: w90_error_type
+    use w90_readwrite, only: w90_readwrite_write_header
+    use w90_wannier90_readwrite, only: w90_wannier90_readwrite_write, w90_extra_io_type
+    use w90_comms, only: mpisize, mpirank
+
+    implicit none
+
+    ! arguments
+    integer, intent(in) :: istdout, istderr
+    integer, intent(out) :: ierr
+    type(lib_common_type), intent(inout) :: common_data
+
+    ! local variables
+    type(w90_error_type), allocatable :: error
+    type(w90_extra_io_type) :: io_params ! what is this? fixme
+    integer :: mpi_size
+
+    ierr = 0
+
+    if (mpirank(common_data%comm) == 0) then
+      mpi_size = mpisize(common_data%comm)
+      ! write jazzy header info
+      call w90_readwrite_write_header(common_data%physics%bohr_version_str, &
+                                      common_data%physics%constants_version_str1, &
+                                      common_data%physics%constants_version_str2, &
+                                      mpi_size, istdout)
+    endif
+
+    ! write simulation details
+    call w90_wannier90_readwrite_write(common_data%atom_data, common_data%band_plot, &
+                                       common_data%dis_control, common_data%dis_spheres, &
+                                       common_data%fermi_energy_list, &
+                                       common_data%fermi_surface_data, common_data%kpt_latt, &
+                                       common_data%output_file, common_data%wvfn_read, &
+                                       common_data%wann_control, common_data%proj, &
+                                       common_data%proj_input, common_data%real_space_ham, &
+                                       common_data%select_proj, common_data%kpoint_path, &
+                                       common_data%tran, common_data%print_output, &
+                                       common_data%wannier_data, &
+                                       common_data%wann_plot, io_params, &
+                                       common_data%w90_calculation, common_data%real_lattice, &
+                                       common_data%sitesym%symmetrize_eps, common_data%mp_grid, &
+                                       common_data%num_bands, common_data%num_kpts, &
+                                       common_data%num_proj, common_data%num_wann, &
+                                       common_data%optimisation, .false., &
+                                       common_data%gamma_only, common_data%lsitesymmetry, &
+                                       common_data%w90_system%spinors, &
+                                       common_data%use_bloch_phases, istdout)
+
+    if (allocated(error)) then
+      call prterr(error, ierr, istdout, istderr, common_data%comm)
+      return
+    endif
+  end subroutine input_print_details
 end module w90_library

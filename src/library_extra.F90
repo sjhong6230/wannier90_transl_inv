@@ -55,7 +55,6 @@ module w90_library_extra
   use w90_library
 
   private
-  public :: input_print_details
   public :: input_reader_special
   public :: overlaps
   public :: print_times
@@ -102,6 +101,7 @@ contains
                                               common_data%w90_calculation, &
                                               common_data%real_lattice, common_data%physics%bohr, &
                                               common_data%mp_grid, common_data%num_bands, &
+                                              common_data%exclude_bands, &
                                               common_data%num_kpts, common_data%num_proj, &
                                               common_data%num_wann, common_data%gamma_only, &
                                               common_data%lhasproj, &
@@ -160,61 +160,6 @@ contains
     endif
     if (allocated(common_data%settings%in_data)) deallocate (common_data%settings%in_data)
   end subroutine input_reader_special
-
-  subroutine input_print_details(common_data, istdout, istderr, ierr)
-    use w90_error_base, only: w90_error_type
-    use w90_readwrite, only: w90_readwrite_write_header
-    use w90_wannier90_readwrite, only: w90_wannier90_readwrite_write, w90_extra_io_type
-    use w90_comms, only: mpisize
-
-    implicit none
-
-    ! arguments
-    integer, intent(in) :: istdout, istderr
-    integer, intent(out) :: ierr
-    type(lib_common_type), intent(inout) :: common_data
-
-    ! local variables
-    type(w90_error_type), allocatable :: error
-    type(w90_extra_io_type) :: io_params ! what is this? fixme
-    integer :: mpi_size
-
-    ierr = 0
-
-    mpi_size = mpisize(common_data%comm)
-
-    ! write jazzy header info
-    call w90_readwrite_write_header(common_data%physics%bohr_version_str, &
-                                    common_data%physics%constants_version_str1, &
-                                    common_data%physics%constants_version_str2, &
-                                    mpi_size, istdout)
-
-    ! write simulation details
-    call w90_wannier90_readwrite_write(common_data%atom_data, common_data%band_plot, &
-                                       common_data%dis_control, common_data%dis_spheres, &
-                                       common_data%fermi_energy_list, &
-                                       common_data%fermi_surface_data, common_data%kpt_latt, &
-                                       common_data%output_file, common_data%wvfn_read, &
-                                       common_data%wann_control, common_data%proj, &
-                                       common_data%proj_input, common_data%real_space_ham, &
-                                       common_data%select_proj, common_data%kpoint_path, &
-                                       common_data%tran, common_data%print_output, &
-                                       common_data%wannier_data, &
-                                       common_data%wann_plot, io_params, &
-                                       common_data%w90_calculation, common_data%real_lattice, &
-                                       common_data%sitesym%symmetrize_eps, common_data%mp_grid, &
-                                       common_data%num_bands, common_data%num_kpts, &
-                                       common_data%num_proj, common_data%num_wann, &
-                                       common_data%optimisation, .false., &
-                                       common_data%gamma_only, common_data%lsitesymmetry, &
-                                       common_data%w90_system%spinors, &
-                                       common_data%use_bloch_phases, istdout)
-
-    if (allocated(error)) then
-      call prterr(error, ierr, istdout, istderr, common_data%comm)
-      return
-    endif
-  end subroutine input_print_details
 
   subroutine write_kmesh(common_data, istdout, istderr, ierr)
     use w90_comms, only: mpirank, comms_sync_err
