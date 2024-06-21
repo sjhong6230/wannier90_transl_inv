@@ -689,13 +689,13 @@ contains
     ! However, here upon reading AMN we do not know where it comes from.
     ! So we still use energy disentanglement by default.
     dis_manifold%frozen_proj = .false.
-    call w90_readwrite_get_keyword('dis_froz_proj', found, error, comm, &
+    call w90_readwrite_get_keyword(settings, 'dis_froz_proj', found, error, comm, &
                                    l_value=dis_manifold%frozen_proj)
     if (allocated(error)) return
 
     ! default values for proj_min and proj_max
     dis_manifold%proj_min = 0.01_dp; dis_manifold%proj_max = 0.95_dp
-    call w90_readwrite_get_keyword('dis_proj_min', found, error, comm, &
+    call w90_readwrite_get_keyword(settings, 'dis_proj_min', found, error, comm, &
                                    r_value=dis_manifold%proj_min)
     if (allocated(error)) return
     if (found) then
@@ -704,7 +704,7 @@ contains
         return
       endif
     endif
-    call w90_readwrite_get_keyword('dis_proj_max', found2, error, comm, &
+    call w90_readwrite_get_keyword(settings, 'dis_proj_max', found2, error, comm, &
                                    r_value=dis_manifold%proj_max)
     if (allocated(error)) return
     if (found2) then
@@ -937,7 +937,6 @@ contains
     integer, allocatable :: lxa(:)
 
     ! keywords for wannier.x
-
     call clear_block(settings, 'atoms_cart', error, comm)
     call clear_block(settings, 'atoms_frac', error, comm)
     call clear_block(settings, 'dis_spheres', error, comm)
@@ -964,6 +963,9 @@ contains
     call w90_readwrite_get_keyword(settings, 'dis_conv_window', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'dis_froz_max', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'dis_froz_min', found, error, comm)
+    call w90_readwrite_get_keyword(settings, 'dis_froz_proj', found, error, comm)
+    call w90_readwrite_get_keyword(settings, 'dis_proj_min', found, error, comm)
+    call w90_readwrite_get_keyword(settings, 'dis_proj_max', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'dis_mix_ratio', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'dis_num_iter', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'dis_spheres_first_wann', found, error, comm)

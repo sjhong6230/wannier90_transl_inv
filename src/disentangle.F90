@@ -137,24 +137,23 @@ contains
 
     ! Set up energy windows
     if (dis_manifold%frozen_proj) then
-      call dis_windows_proj(dis_spheres, dis_manifold, eigval_opt, a_matrix, m_matrix_orig, &
-                            m_matrix_orig_local, kpt_latt, recip_lattice, indxfroz, &
-                            indxnfroz, ndimfroz, nfirstwin, print_output%iprint, kmesh_info%nnlist, &
-                            kmesh_info%nntot, num_bands, num_kpts, num_wann, num_nodes, my_node_id, &
-                            print_output%timing_level, lfrozen, linner, on_root, stdout, timer, error, comm)
+      call dis_windows_proj(dis_manifold, eigval_opt, a_matrix, m_matrix_orig_local, kpt_latt, &
+                            recip_lattice, indxfroz, indxnfroz, ndimfroz, dis_manifold%nfirstwin, &
+                            print_output%iprint, kmesh_info%nnlist, kmesh_info%nntot, num_bands, &
+                            num_kpts, num_wann, print_output%timing_level, lfrozen, linner, &
+                            on_root, stdout, dist_k, global_k, my_node_id, timer, error, comm)
       if (allocated(error)) return
     else
       call dis_windows(dis_spheres, dis_manifold, eigval_opt, kpt_latt, recip_lattice, indxfroz, &
-                       indxnfroz, ndimfroz, print_output%iprint, num_bands, num_kpts, &
-                       num_wann, print_output%timing_level, lfrozen, linner, on_root, &
-                       stdout, timer, error, comm)
+                       indxnfroz, ndimfroz, print_output%iprint, num_bands, num_kpts, num_wann, &
+                       print_output%timing_level, lfrozen, linner, on_root, stdout, timer, error, comm)
       if (allocated(error)) return
     endif
 
     ! Construct the unitarized projection
-    call dis_project(a_matrix, u_matrix_opt, dis_manifold%ndimwin, dis_manifold%nfirstwin, num_bands, num_kpts, &
-                     num_wann, print_output%timing_level, on_root, print_output%iprint, timer, &
-                     error, stdout, comm)
+    call dis_project(a_matrix, u_matrix_opt, dis_manifold%ndimwin, dis_manifold%nfirstwin, &
+                     num_bands, num_kpts, num_wann, print_output%timing_level, on_root, &
+                     print_output%iprint, timer, error, stdout, comm)
     if (allocated(error)) return
 
     ! If there is an inner window, need to modify projection procedure
@@ -183,9 +182,9 @@ contains
     if (.not. dis_manifold%frozen_proj) then
       ! Slim down the original Mmn(k,b)
 
-      call internal_slim_m(m_matrix_orig_local, dis_manifold%ndimwin, dis_manifold%nfirstwin, kmesh_info%nnlist, &
-                           kmesh_info%nntot, num_bands, print_output%timing_level, timer, dist_k, &
-                           global_k, error, comm)
+      call internal_slim_m(m_matrix_orig_local, dis_manifold%ndimwin, dis_manifold%nfirstwin, &
+                           kmesh_info%nnlist, kmesh_info%nntot, num_bands, print_output%timing_level, &
+                           timer, dist_k, global_k, error, comm)
       if (allocated(error)) return
 
       dis_manifold%lwindow = .false.
@@ -1183,10 +1182,10 @@ contains
     !================================================!
   end subroutine dis_windows
 
-  subroutine dis_windows_proj(dis_spheres, dis_manifold, eigval_opt, a_matrix, m_matrix_orig, m_matrix_orig_local, &
+  subroutine dis_windows_proj(dis_manifold, eigval_opt, a_matrix, m_matrix_orig_local, &
                               kpt_latt, recip_lattice, indxfroz, indxnfroz, ndimfroz, nfirstwin, iprint, nnlist, &
-                              nntot, num_bands, num_kpts, num_wann, num_nodes, my_node_id, timing_level, lfrozen, &
-                              linner, on_root, stdout, timer, error, comm)
+                              nntot, num_bands, num_kpts, num_wann, timing_level, lfrozen, &
+                              linner, on_root, stdout, dist_k, global_k, my_node_id, timer, error, comm)
     !==================================================================!
     !                                                                  !
     !! This subroutine selects the states for disentanglement and frozen
@@ -1215,28 +1214,35 @@ contains
     !     eigval_opt(nb,nkp) At input it contains a large set of eigenvalues. At
     !                    it is slimmed down to contain only those inside the
     !                    energy window, stored in nb=1,...,ndimwin(nkp)
+    use w90_comms, only: w90_comm_type
+    use w90_constants, only: dp, cmplx_0, cmplx_1
+    use w90_error
+    use w90_io, only: io_stopwatch_start, io_stopwatch_stop
+    use w90_types, only: dis_manifold_type, timer_list_type
+    use w90_wannier90_types, only: dis_control_type
 
     implicit none
 
     ! arguments
-    type(dis_spheres_type), intent(in)     :: dis_spheres
     type(dis_manifold_type), intent(inout) :: dis_manifold ! ndimwin alone is modified
     type(timer_list_type), intent(inout) :: timer
     type(w90_error_type), allocatable, intent(out) :: error
-    type(w90comm_type), intent(in) :: comm
+    type(w90_comm_type), intent(in) :: comm
 
+    integer, intent(in) :: dist_k(:), global_k(:)
+    !! assignment of k-points to MPI processes and global/local k index map
     integer, intent(in) :: iprint, timing_level
     integer, intent(in) :: stdout
     integer, intent(in) :: nntot, nnlist(:, :) ! (num_kpts, nntot)
     integer, intent(in) :: num_bands, num_kpts, num_wann
-    integer, intent(in) :: num_nodes, my_node_id
+    integer, intent(in) :: my_node_id
     integer, intent(inout) :: ndimfroz(:)
     integer, intent(inout) :: indxfroz(:, :)
     integer, intent(inout) :: indxnfroz(:, :)
     integer, intent(inout) :: nfirstwin(:)
 
     complex(kind=dp), intent(inout) :: a_matrix(:, :, :)
-    complex(kind=dp), intent(inout) :: m_matrix_orig(:, :, :, :)
+    !complex(kind=dp), intent(inout) :: m_matrix_orig(:, :, :, :)
     complex(kind=dp), intent(inout) :: m_matrix_orig_local(:, :, :, :)
     real(kind=dp), intent(in) :: kpt_latt(3, num_kpts), recip_lattice(3, 3)
     real(kind=dp), intent(inout) :: eigval_opt(:, :)
@@ -1258,12 +1264,8 @@ contains
     real(kind=dp) :: projs(num_bands)
     integer :: invindxkeep(num_bands)
     ! Needed to split m_matrix_orig on different nodes
-    integer, dimension(0:num_nodes - 1) :: counts
-    integer, dimension(0:num_nodes - 1) :: displs
 
     if (timing_level > 1 .and. on_root) call io_stopwatch_start('dis: windows_proj', timer)
-
-    call comms_array_split(num_kpts, counts, displs, comm)
 
     linner = .false.
 
@@ -1462,28 +1464,11 @@ contains
     ! indxkeep, then I will skip the interl_slim_m step which is for removing
     ! states outside of energy outer window.
     !
-    ! slim down m_matrix_orig
-    if (on_root) then
-      ! this is done outside of previous do loop since we need indxkeep on nn kpoint nkp2
-      ! I also slim down m_matrix_orig here to be safe: make
-      ! sure it is consistent with m_matrix_orig_local
-      do nkp = 1, num_kpts
-        do nn = 1, nntot
-          nkp2 = nnlist(nkp, nn)
-          do j = 1, dis_manifold%ndimwin(nkp2)
-            do i = 1, dis_manifold%ndimwin(nkp)
-              m_matrix_orig(i, j, nn, nkp) = m_matrix_orig( &
-                                             indxkeep(i, nkp), indxkeep(j, nkp2), nn, nkp)
-            end do
-          end do
-          m_matrix_orig(dis_manifold%ndimwin(nkp) + 1:num_bands, &
-                        dis_manifold%ndimwin(nkp2) + 1:num_bands, nn, nkp) = cmplx_0
-        end do
-      end do
-    endif
     ! slim down m_matrix_orig_local
-    do nkp = 1, counts(my_node_id)
-      nkp_global = nkp + displs(my_node_id)
+
+    do nkp = 1, count(dist_k(:) == my_node_id)
+      nkp_global = global_k(nkp)
+
       do nn = 1, nntot
         nkp2 = nnlist(nkp_global, nn)
         do j = 1, dis_manifold%ndimwin(nkp2)
