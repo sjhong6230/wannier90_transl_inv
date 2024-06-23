@@ -47,3 +47,18 @@ default:
 clean:
 	echo "Cleaning up..."
 	rm -r $(outfiles)
+
+# Usually, it is mpirun. If not set, run in serial.
+# MPI_CMD = mpirun -n 8
+
+test:
+	@echo "Testing all calculations"
+	$(MPI_CMD) pw.x < silicon.scf > scf.out
+	$(MPI_CMD) pw.x < silicon.bands > bands.out
+	$(MPI_CMD) bands.x < silicon.bandsx > bandsx.out
+	$(MPI_CMD) pw.x < silicon.nscf > nscf.out
+	$(MPI_CMD) wannier90.x -pp silicon
+	$(MPI_CMD) pw2wannier90.x < silicon.pw2wan > pw2wan.out
+	$(MPI_CMD) wannier90.x silicon
+	./silicon_bandsdiff.gnu
+	@echo "All calculations finished successfully"

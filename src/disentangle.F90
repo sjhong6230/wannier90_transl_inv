@@ -1242,7 +1242,6 @@ contains
     integer, intent(inout) :: nfirstwin(:)
 
     complex(kind=dp), intent(inout) :: a_matrix(:, :, :)
-    !complex(kind=dp), intent(inout) :: m_matrix_orig(:, :, :, :)
     complex(kind=dp), intent(inout) :: m_matrix_orig_local(:, :, :, :)
     real(kind=dp), intent(in) :: kpt_latt(3, num_kpts), recip_lattice(3, 3)
     real(kind=dp), intent(inout) :: eigval_opt(:, :)
@@ -1263,7 +1262,6 @@ contains
     integer :: i, j, k, l
     real(kind=dp) :: projs(num_bands)
     integer :: invindxkeep(num_bands)
-    ! Needed to split m_matrix_orig on different nodes
 
     if (timing_level > 1 .and. on_root) call io_stopwatch_start('dis: windows_proj', timer)
 
@@ -1461,11 +1459,11 @@ contains
 
     ! slim down m_matrix since some states in the middle might be removed due to
     ! low projectability. I remove them here so that I can use the local variable
-    ! indxkeep, then I will skip the interl_slim_m step which is for removing
+    ! indxkeep, then I will skip the internal_slim_m step which is for removing
     ! states outside of energy outer window.
     !
     ! slim down m_matrix_orig_local
-
+    ! this is done outside of previous do loop since we need indxkeep on nn kpoint nkp2
     do nkp = 1, count(dist_k(:) == my_node_id)
       nkp_global = global_k(nkp)
 

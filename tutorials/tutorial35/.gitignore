@@ -31,3 +31,9 @@ silicon.eig
 silicon.mmn
 silicon.node_00000.werr
 *.pdf
+silicon.chk
+silicon.nnkp
+silicon_band.dat
+silicon_band.gnu
+silicon_band.kpt
+silicon_band.labelinfo.dat
