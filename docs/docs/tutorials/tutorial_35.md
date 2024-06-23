@@ -3,10 +3,11 @@
 ## Outline
 
 Obtain MLWFs for silicon using projectability disentanglement, with additional
-$3d$ projectors to describe high-energy conduction bands. For more details on
-the methodology, see Ref.[@Qiao2023-pdwf].
+$3d$ projectors to describe high-energy conduction bands.
+For more details on the methodology, see Ref.[@Qiao2023-pdwf].
 
 ## Input files
+<!-- markdownlint-disable code-block-style -->
 
 - Directory: [`tutorial/tutorial35/`](https://github.com/wannier-developers/wannier90/tree/develop/tutorials/tutorial35)
 

@@ -2,10 +2,11 @@
 
 ## Outline
 
-Obtain MLWFs for graphene using projectability disentanglement. For more details
-on the methodology, see Ref.[@Qiao2023-pdwf].
+Obtain MLWFs for graphene using projectability disentanglement.
+For more details on the methodology, see Ref.[@Qiao2023-pdwf].
 
 ## Input files
+<!-- markdownlint-disable code-block-style -->
 
 - Directory: [`tutorial/tutorial34/`](https://github.com/wannier-developers/wannier90/tree/develop/tutorials/tutorial34)
 
