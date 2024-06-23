@@ -41,7 +41,9 @@ The third line must contain the number $n$ of following $k$ points.
 The following $n$ lines must contain the list of $k$ points in the
 format
 
-    kpointidx k1 k2 k3
+```text
+kpointidx k1 k2 k3
+```
 
 where `kpointidx` is an integer identifying the given $k$ point, and
 `k1`, `k2` and `k3` are the three coordinates of the $k$ points in the
@@ -78,13 +80,18 @@ significant bottleneck).
 
 To join the files, on can simply use the following command:
 
-    cat seedname_geninterp_*.dat > seedname_geninterp.dat
+```bash title="Terminal"
+cat seedname_geninterp_*.dat > seedname_geninterp.dat
+```
 
 or, if one wants to remove the comment lines:
 
-    rm seedname_geninterp.dat
-    for i in seedname_geninterp_*.dat ; do grep -v \# "$i" >> \
-    seedname_geninterp.dat ; done
+```bash title="Terminal"
+rm seedname_geninterp.dat
+for i in seedname_geninterp_*.dat ; do
+    grep -v \# "$i" >> seedname_geninterp.dat ;
+done
+```
 
 The first few lines of each files are comments (starting with #),
 containing a datestamp, the comment line as it is read from the input
