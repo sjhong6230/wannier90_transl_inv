@@ -4295,7 +4295,7 @@ contains
   end subroutine init_settings
 
   subroutine expand_settings(settings) ! this is a compromise to avoid a fixed size
-    type(settings_data), allocatable :: nentries(:); 
+    type(settings_data), allocatable :: nentries(:)
     type(settings_type), intent(inout) :: settings
     integer :: n, m ! old, new sizes
     integer, parameter :: incsize = 20 ! default increment when settings array grows
