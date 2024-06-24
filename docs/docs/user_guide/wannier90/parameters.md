@@ -122,6 +122,9 @@ translate_home_cell only relevant if `write_xyz` is `.true.`
 |        dis_win_max         |  P   | Top of the outer energy window                                         |
 |        dis_froz_min        |  P   | Bottom of the inner (frozen) energy window                             |
 |        dis_froz_max        |  P   | Top of the inner (frozen) energy window                                |
+|        dis_froz_proj       |  L   | To activate projectability disentanglement                             |
+|        dis_proj_min        |  P   | Lower threshold for projectability disentanglement                     |
+|        dis_proj_max        |  P   | Upper threshold for projectability disentanglement                     |
 |        dis_num_iter        |  I   | Number of iterations for the minimisation of $\Omega_{\mathrm{I}}$                    |
 |       dis_mix_ratio        |  R   | Mixing ratio during the minimisation of $\Omega_{\mathrm{I}}$                         |
 |        dis_conv_tol        |  R   | The convergence tolerance for finding $\Omega_{\mathrm{I}}$                           |

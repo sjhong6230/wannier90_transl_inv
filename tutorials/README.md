@@ -59,7 +59,7 @@ tutorial23: Silicon - G0W0 bands structure interpolation
 
 tutorial24: Tellurium - gyrotropic effects
 
-tutorial25: Gallium Arsenide - Nonlinear shift current  
+tutorial25: Gallium Arsenide - Nonlinear shift current
 
 tutorial26: Gallium Arsenide - Selective localization and constrained centres
 
@@ -77,4 +77,8 @@ tutorial32: Tungsten - SCDM parameters from projectability
 
 tutorial33: BC2N - Expansion coefficients for kdotp bands
 
-tutorial34: Silicon - Comparison of Marzari-Vanderbilt and Stengel-Spaldin functionals
+tutorial34: Graphene - Projectability-disentangled Wannier functions
+
+tutorial35: Silicon - Projectability-disentangled Wannier functions with custom projection functions
+
+tutorial36: Silicon - Comparison of Marzari-Vanderbilt and Stengel-Spaldin functionals

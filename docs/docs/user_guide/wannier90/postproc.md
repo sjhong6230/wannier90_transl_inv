@@ -430,9 +430,9 @@ interface between `wannier90` and `pwscf`, a plane-wave DFT
 code that comes as part of the Quantum ESPRESSO package (see
 <http://www.quantum-espresso.org>). You will need to download and
 compile `pwscf` (i.e., the `pw.x` code) and the
-post-processing interface `pw2wannier90.x`. Please refer to the
-documentation that comes with the Quantum ESPRESSO distribution for
-instructions.
+post-processing interface `pw2wannier90.x`. Please refer to
+<https://www.quantum-espresso.org/Doc/INPUT_pw2wannier90.html>
+for the documentation that comes with the Quantum ESPRESSO distribution.
 
 1. Run 'scf'/'nscf' calculation(s) with `pw`
 
@@ -458,7 +458,10 @@ in the `wannier90` Tutorial.
 
 ### `seedname.pw2wan`
 
-A number of keywords may be specified in the `pw2wannier90` input file:
+For the most up-to-date documentation, see
+<https://www.quantum-espresso.org/Doc/INPUT_pw2wannier90.html>;
+for historical reference, we show here a number of keywords may be
+specified in the `pw2wannier90` input file:
 
 - `outdir` -- Location to write output files. Default is `` `./' ``
 
