@@ -14,13 +14,17 @@ repos:
       )$
   - id: trailing-whitespace
     files: (?x)^(
+        Makefile|
         config/make[.]inc[.\w]*|
-        tutorials/tutorial\d\d[-]?\w*/.+win
+        tutorials/tutorial\d\d[-]?\w*/.+win|
+        src/.+
       )$
   - id: end-of-file-fixer
     files: (?x)^(
+        Makefile|
         config/make[.]inc[.\w]*|
-        tutorials/tutorial\d\d[-]?\w*/.+win
+        tutorials/tutorial\d\d[-]?\w*/.+win|
+        src/.+
       )$
 - repo: https://github.com/pseewald/fprettify
   rev: v0.3.3
