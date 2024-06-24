@@ -1920,5 +1920,4 @@ contains
     call comms_no_sync_scatterv_int_3(array, localcount, rootglobalarray, counts, displs, &
                                       error, comm)
   end subroutine comms_scatterv_int_3
-
 end module w90_comms
