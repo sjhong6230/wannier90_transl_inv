@@ -2546,20 +2546,6 @@ contains
         enddo
       enddo
 
-      sum_mnn = 0.0_dp
-      do n = 1, num_wann
-        do nn = 1, kmesh_info%nntot
-          do nkp_loc = 1, nkrank
-            nkp = global_k(nkp_loc)
-            ! Note that this ln_tmp is defined differently wrt the one in wann_domega
-            sum_mnn(n, nn) = sum_mnn(n, nn) + m_matrix_loc(n, n, nn, nkp_loc)
-          enddo
-        enddo
-      enddo
-
-      call comms_allreduce(sum_mnn(1, 1), num_wann*kmesh_info%nntot, 'SUM', error, comm)
-      if (allocated(error)) return
-
       cdodq_loc = cmplx_0
       do nkp_loc = 1, nkrank
         do n = 1, num_wann
