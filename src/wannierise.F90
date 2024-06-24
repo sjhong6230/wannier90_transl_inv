@@ -2515,8 +2515,10 @@ contains
 
       sum_mnn = sum_mnn/real(num_kpts, dp)
 
-      do nkp_loc = 1, nkrank
-        ln_tmp_loc(:, :, nkp_loc) = kmesh_info%wb(nn)*(aimag(log(sum_mnn(:, :))) - sheet(:, :, 1))
+      do nn = 1, kmesh_info%nntot
+        do nkp_loc = 1, nkrank
+          ln_tmp_loc(:, nn, nkp_loc) = kmesh_info%wb(nn)*(aimag(log(sum_mnn(:, nn))) - sheet(:, nn, 1))
+        enddo
       enddo
 
       rave = 0.0_dp
