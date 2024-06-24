@@ -741,7 +741,7 @@ contains
   end subroutine kmesh_get
 
   subroutine kmesh_sort(kmesh_info, num_kpts, error, comm)
-  !==================================================================!
+    !==================================================================!
     !                                                                  !
     !! Sorts b vectors                                                 !
     !                                                                  !
@@ -764,7 +764,7 @@ contains
     integer, allocatable :: nnlist_tmp(:), nncell_tmp(:, :)
     integer :: na, nn, nkp, ifpos, ifneg, ierr
 
-    allocate(wb_tmp(kmesh_info%nntot), stat=ierr)
+    allocate (wb_tmp(kmesh_info%nntot), stat=ierr)
     if (ierr /= 0) then
       call set_error_alloc(error, 'Error in allocating wb_tmp in kmesh_sort', comm)
       return
@@ -781,24 +781,24 @@ contains
       enddo
     enddo
     kmesh_info%wb(:) = wb_tmp(:)
-    
+
     deallocate (wb_tmp, stat=ierr)
     if (ierr /= 0) then
       call set_error_dealloc(error, 'Error in deallocating wb_tmp in kmesh_sort', comm)
       return
     endif
 
-    allocate(nnlist_tmp(kmesh_info%nntot), stat=ierr)
+    allocate (nnlist_tmp(kmesh_info%nntot), stat=ierr)
     if (ierr /= 0) then
       call set_error_alloc(error, 'Error in allocating nnlist_tmp in kmesh_sort', comm)
       return
     endif
-    allocate(bk_tmp(3, kmesh_info%nntot), stat=ierr)
+    allocate (bk_tmp(3, kmesh_info%nntot), stat=ierr)
     if (ierr /= 0) then
       call set_error_alloc(error, 'Error in allocating bk_tmp in kmesh_sort', comm)
       return
     endif
-    allocate(nncell_tmp(3, kmesh_info%nntot), stat=ierr)
+    allocate (nncell_tmp(3, kmesh_info%nntot), stat=ierr)
     if (ierr /= 0) then
       call set_error_alloc(error, 'Error in allocating nncell_tmp in kmesh_sort', comm)
       return
@@ -823,7 +823,7 @@ contains
       kmesh_info%nncell(:, nkp, :) = nncell_tmp(:, :)
       kmesh_info%bk(:, :, nkp) = bk_tmp(:, :)
     enddo
-    
+
     deallocate (nnlist_tmp, stat=ierr)
     if (ierr /= 0) then
       call set_error_dealloc(error, 'Error in deallocating nnlist_tmp in kmesh_sort', comm)
