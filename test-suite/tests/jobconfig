@@ -28,6 +28,12 @@ program = WANNIER90_LABELINFO
 inputs_args = ('silicon.win', '')
 output = silicon_band.labelinfo.dat
 
+# Silicon, 4 valence bands + 4 conduction bands; interpolated bandstructure only, checking the band.dat file
+[testw90_example03_bands_plot]
+program = WANNIER90_BANDS_PLOT
+inputs_args = ('silicon.win', '')
+output = silicon_band.dat
+
 # Copper, states around the Fermi level; Fermi surface
 [testw90_example04]
 program = WANNIER90_WOUT_OK
@@ -97,6 +103,30 @@ output = wannier.werr
 program = WANNIER90_WERR_FAIL
 inputs_args = ('wannier.win', '')
 output = wannier.werr
+
+# Test for the higher-order bvectors and bweights
+[testw90_nnkpt6/]
+program = WANNIER90_NNKP_OK
+inputs_args = ('wannier.win', '-pp')
+output = wannier.nnkp
+
+# Test for the higher-order bvectors and bweights, using the nearest-shells method
+[testw90_nnkpt7/]
+program = WANNIER90_NNKP_OK
+inputs_args = ('wannier.win', '-pp')
+output = wannier.nnkp
+
+# Test for the wannier position matrix elements and spreads using higher-order finite difference
+[testw90_knbo3_higher/]
+program = WANNIER90_WOUT_OK
+inputs_args = ('knbo3.win', '')
+output = knbo3.wout
+
+# Test for the spin hall conductivity using higher-order finite difference
+[testpostw90_pt_shc_higher/]
+program = POSTW90_SHCFERMIDAT_OK
+inputs_args = ('Pt.win', '')
+output = Pt-shc-fermiscan.dat
 
 # Testing symmetry-adapted WFs, from example21, case of As with s and p
 [testw90_example21_As_sp]

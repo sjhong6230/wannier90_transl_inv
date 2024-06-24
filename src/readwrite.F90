@@ -729,6 +729,7 @@ contains
 
     integer :: itmp, ierr
     logical :: found
+    integer :: n
 
     call w90_readwrite_get_keyword(settings, 'search_shells', found, error, comm, &
                                    i_value=kmesh_input%search_shells)
@@ -736,6 +737,32 @@ contains
     if (kmesh_input%search_shells < 0) then
       call set_error_input(error, 'Error: search_shells must be positive', comm)
       return
+    endif
+    call w90_readwrite_get_keyword(settings, 'search_supcell_size', found, error, comm, &
+                                   i_value=kmesh_input%search_supcell_size)
+    if (allocated(error)) return
+    if (kmesh_input%search_supcell_size < 0) then
+      call set_error_input(error, 'Error: search_supcell_size must be positive', comm)
+      return
+    endif
+    call w90_readwrite_get_keyword(settings, 'higher_order_n', found, error, comm, &
+                                   i_value=kmesh_input%higher_order_n)
+    if (allocated(error)) return
+    if (kmesh_input%higher_order_n < 0) then
+      call set_error_input(error, 'Error: higher_order_n must be positive', comm)
+      return
+    endif
+
+    n = kmesh_input%higher_order_n
+    kmesh_input%max_shells_h = n*(4*n**2 + 15*n + 17)/6
+    kmesh_input%max_shells_aux = kmesh_input%max_shells_h
+    kmesh_input%num_nnmax_h = 2*kmesh_input%max_shells_h
+
+    call w90_readwrite_get_keyword(settings, 'higher_order_nearest_shells', found, error, comm, &
+                                   l_value=kmesh_input%higher_order_nearest_shells)
+    if (allocated(error)) return
+    if (.not. kmesh_input%higher_order_nearest_shells) then
+      kmesh_input%max_shells_aux = 6
     endif
 
     call w90_readwrite_get_keyword(settings, 'kmesh_tol', found, error, comm, &
@@ -750,8 +777,8 @@ contains
                                         .true., error, comm)
     if (allocated(error)) return
     if (found) then
-      if (kmesh_input%num_shells < 0 .or. kmesh_input%num_shells > max_shells) then
-        call set_error_input(error, 'Error: number of shell in shell_list must be between zero and six', comm)
+      if (kmesh_input%num_shells < 0 .or. kmesh_input%num_shells > kmesh_input%max_shells_h) then
+        call set_error_input(error, 'Error: number of shell in shell_list must be between zero and kmesh_input%max_shells_h', comm)
         return
       endif
       !if (allocated(kmesh_input%shell_list)) deallocate (kmesh_input%shell_list)
@@ -770,7 +797,7 @@ contains
     else
       !if (allocated(kmesh_input%shell_list)) deallocate (kmesh_input%shell_list)
       ! this is the default allocation of the shell_list--used by kmesh_shell_automatic()
-      allocate (kmesh_input%shell_list(max_shells), stat=ierr)
+      allocate (kmesh_input%shell_list(kmesh_input%max_shells_h), stat=ierr)
       if (ierr /= 0) then
         call set_error_alloc(error, 'Error allocating shell_list in w90_readwrite_read_kmesh_data', comm)
         return
@@ -986,6 +1013,8 @@ contains
     call w90_readwrite_get_keyword(settings, 'fixed_step', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'gamma_only', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'guiding_centres', found, error, comm)
+    call w90_readwrite_get_keyword(settings, 'higher_order_n', found, error, comm)
+    call w90_readwrite_get_keyword(settings, 'higher_order_nearest_shells', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'hr_cutoff', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'hr_plot', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'iprint', found, error, comm)
@@ -1003,6 +1032,7 @@ contains
     call w90_readwrite_get_keyword(settings, 'num_shells', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'num_valence_bands', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'num_wann', found, error, comm)
+    call w90_readwrite_get_keyword(settings, 'use_ss_functional', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'one_dim_axis', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'optimisation', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'postproc_setup', found, error, comm)
@@ -4295,7 +4325,7 @@ contains
   end subroutine init_settings
 
   subroutine expand_settings(settings) ! this is a compromise to avoid a fixed size
-    type(settings_data), allocatable :: nentries(:); 
+    type(settings_data), allocatable :: nentries(:)
     type(settings_type), intent(inout) :: settings
     integer :: n, m ! old, new sizes
     integer, parameter :: incsize = 20 ! default increment when settings array grows
