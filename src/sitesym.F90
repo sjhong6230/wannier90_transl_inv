@@ -25,7 +25,7 @@ module w90_sitesym
   !! Routines to impose the site symmetry during minimisation of spread
 
   use w90_constants, only: dp, cmplx_1, cmplx_0
-  use w90_comms, only: w90comm_type
+  use w90_comms, only: w90_comm_type
 
   implicit none
 
@@ -123,7 +123,7 @@ contains
     ! arguments
     type(sitesym_type), intent(in) :: sitesym
     type(w90_error_type), allocatable, intent(out) :: error
-    type(w90comm_type), intent(in) :: comm
+    type(w90_comm_type), intent(in) :: comm
 
     integer, intent(in) :: num_bands
     integer, intent(in) :: stdout
@@ -192,9 +192,10 @@ contains
   end subroutine sitesym_symmetrize_u_matrix
 
   !================================================!
-  subroutine sitesym_symmetrize_gradient(sitesym, grad, imode, num_kpts, num_wann)
+  subroutine sitesym_symmetrize_gradient(sitesym, grad, imode, num_kpts, num_wann, error, comm)
     !================================================!
 
+    use w90_error, only: w90_error_type, set_error_fatal
     use w90_utility, only: utility_zgemm
     use w90_wannier90_types, only: sitesym_type
 
@@ -202,8 +203,10 @@ contains
 
     ! arguments
     type(sitesym_type), intent(in) :: sitesym
+    type(w90_error_type), allocatable, intent(out) :: error
+    type(w90_comm_type), intent(in) :: comm
     integer, intent(in) :: imode, num_wann, num_kpts
-    complex(kind=dp), intent(inout) :: grad(num_wann, num_wann, num_kpts)
+    complex(kind=dp), intent(inout) :: grad(:, :, :) !(num_wann, num_wann, num_kpts)
 
     ! local variables
     integer :: ik, ir, isym, irk, ngk
@@ -228,10 +231,8 @@ contains
           ! cmat1 = D(R,k)^{+} G(Rk) D(R,k)
           ! cmat2 = D(R,k)^{\dagger} G(Rk)
           !
-          call utility_zgemm(cmat2, sitesym%d_matrix_wann(:, :, isym, ir), 'C', &
-                             grad(:, :, irk), 'N', num_wann)
-          call utility_zgemm(cmat1, cmat2, 'N', &
-                             sitesym%d_matrix_wann(:, :, isym, ir), 'N', num_wann)
+          call utility_zgemm(cmat2, sitesym%d_matrix_wann(:, :, isym, ir), 'C', grad(:, :, irk), 'N', num_wann)
+          call utility_zgemm(cmat1, cmat2, 'N', sitesym%d_matrix_wann(:, :, isym, ir), 'N', num_wann)
           grad_total = grad_total + cmat1
         enddo
         grad(:, :, ik) = grad_total
@@ -239,32 +240,40 @@ contains
       do ik = 1, num_kpts
         if (sitesym%ir2ik(sitesym%ik2ir(ik)) .ne. ik) grad(:, :, ik) = 0
       enddo
-    endif ! if (imode.eq.1)
-    !
-    ! grad -> 1/N_{R'} \sum_{R'} D^{+}(R',k) grad D(R',k)
-    ! where R' k = k
-    !
-    do ir = 1, sitesym%nkptirr
-      ik = sitesym%ir2ik(ir)
-      ngk = count(sitesym%kptsym(:, ir) .eq. ik)
-      if (ngk .eq. 1) cycle
-      grad_total = grad(:, :, ik)
-      do isym = 2, sitesym%nsymmetry
-        if (sitesym%kptsym(isym, ir) .ne. ik) cycle
-        !
-        ! calculate cmat1 = D^{+}(R,k) G(Rk) D(R,k)
-        !
-        ! step 1: cmat2 =  G(Rk) D(R,k)
-        call utility_zgemm(cmat2, grad(:, :, ik), 'N', &
-                           sitesym%d_matrix_wann(:, :, isym, ir), 'N', num_wann)
-        ! step 2: cmat1 = D^{+}(R,k) * cmat2
-        call utility_zgemm(cmat1, sitesym%d_matrix_wann(:, :, isym, ir), 'C', &
-                           cmat2, 'N', num_wann)
-        grad_total = grad_total + cmat1
-      enddo
-      grad(:, :, ik) = grad_total/ngk
-    enddo
+    elseif (imode .eq. 2) then
+      ! JJ, 20 July 2022, note:
+      ! previously the following algorithm was *also applied* after the above for "mode 1"
+      ! changed such that two algorithms are mutually exclusive.
+      ! old results (test case testw90_disentanglement_sawfs) require mode 1 followed by mode 2
+      ! see call in wannierise's wann_domega() routine
+      ! surely the two modes do the same thing??? if not, then replace elseif with endif as before --JJ
 
+      !
+      ! grad -> 1/N_{R'} \sum_{R'} D^{+}(R',k) grad D(R',k)
+      ! where R' k = k
+      !
+      do ir = 1, sitesym%nkptirr
+        ik = sitesym%ir2ik(ir)
+        ngk = count(sitesym%kptsym(:, ir) .eq. ik)
+        if (ngk .eq. 1) cycle
+        grad_total = grad(:, :, ik)
+        do isym = 2, sitesym%nsymmetry
+          if (sitesym%kptsym(isym, ir) .ne. ik) cycle
+          !
+          ! calculate cmat1 = D^{+}(R,k) G(Rk) D(R,k)
+          !
+          ! step 1: cmat2 =  G(Rk) D(R,k)
+          call utility_zgemm(cmat2, grad(:, :, ik), 'N', sitesym%d_matrix_wann(:, :, isym, ir), 'N', num_wann)
+          ! step 2: cmat1 = D^{+}(R,k) * cmat2
+          call utility_zgemm(cmat1, sitesym%d_matrix_wann(:, :, isym, ir), 'C', cmat2, 'N', num_wann)
+          grad_total = grad_total + cmat1
+        enddo
+        grad(:, :, ik) = grad_total/ngk
+      enddo
+    else
+      call set_error_fatal(error, 'unknown mode argument in sitesym_symmetrize_gradient', comm)
+      return
+    endif
     return
   end subroutine sitesym_symmetrize_gradient
 
@@ -280,7 +289,7 @@ contains
     ! arguments
     type(sitesym_type), intent(in) :: sitesym
     type(w90_error_type), allocatable, intent(out) :: error
-    type(w90comm_type), intent(in) :: comm
+    type(w90_comm_type), intent(in) :: comm
 
     integer, intent(in) :: num_wann, num_kpts
     complex(kind=dp), intent(inout) :: urot(num_wann, num_wann, num_kpts)
@@ -398,7 +407,7 @@ contains
 
     ! arguments
     type(sitesym_type), intent(in) :: sitesym
-    type(w90comm_type), intent(in) :: comm
+    type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
     integer, intent(in) :: ir, ndim
@@ -492,7 +501,7 @@ contains
     implicit none
 
     type(w90_error_type), allocatable, intent(out) :: error
-    type(w90comm_type), intent(in) :: comm
+    type(w90_comm_type), intent(in) :: comm
     integer, intent(in) :: ndim, m
     complex(kind=dp), intent(inout) :: u(ndim, m)
     integer, intent(in) :: n
@@ -551,14 +560,14 @@ contains
     !================================================!
 
     use w90_wannier90_types, only: sitesym_type
-    use w90_error, only: w90_error_type, set_error_fatal
+    use w90_error, only: w90_error_type, set_error_fatal, set_error_alloc, set_error_dealloc
 
     implicit none
 
     ! arguments
     type(sitesym_type), intent(in) :: sitesym
     type(w90_error_type), allocatable, intent(out) :: error
-    type(w90comm_type), intent(in) :: comm
+    type(w90_comm_type), intent(in) :: comm
 
     integer, intent(in) :: num_bands
     integer, intent(in) :: stdout
@@ -570,14 +579,39 @@ contains
     complex(kind=dp), intent(inout) :: umat(:, :) !(num_bands, num_wann)
 
     ! local variables
-    complex(kind=dp) :: umatnew(num_bands, num_wann) !jj normally don't we alloc explicitly?
-    complex(kind=dp) :: ZU(num_bands, num_wann)
-    complex(kind=dp) :: deltaU(num_bands, num_wann), carr(num_bands)
+    complex(kind=dp), allocatable :: umatnew(:, :) !(num_bands, num_wann)
+    complex(kind=dp), allocatable :: ZU(:, :) !(num_bands, num_wann)
+    complex(kind=dp), allocatable :: deltaU(:, :) !(num_bands, num_wann)
+    complex(kind=dp), allocatable :: carr(:) !(num_bands)
     integer :: i, m, INFO, IFAIL(2), IWORK(5*2)
     complex(kind=dp) :: HP(3), SP(3), V(2, 2), CWORK(2*2)
     real(kind=dp)    :: W(2), RWORK(7*2), sp3
-    integer :: iter
+    integer :: iter, ierr
     integer, parameter :: niter = 50
+
+    allocate (umatnew(num_bands, num_wann), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating umatnew in sitesym_dis_extract_symmetry', comm)
+      return
+    endif
+
+    allocate (ZU(num_bands, num_wann), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating ZU in sitesym_dis_extract_symmetry', comm)
+      return
+    endif
+
+    allocate (deltaU(num_bands, num_wann), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating deltaU in sitesym_dis_extract_symmetry', comm)
+      return
+    endif
+
+    allocate (carr(num_bands), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating carr in sitesym_dis_extract_symmetry', comm)
+      return
+    endif
 
     do iter = 1, niter
       !  Z*U
@@ -633,6 +667,30 @@ contains
       umat(:, :) = umatnew(:, :)
     enddo ! iter
 
+    deallocate (umatnew, stat=ierr)
+    if (ierr /= 0) then
+      call set_error_dealloc(error, 'Error in deallocating umatnew in sitesym_dis_extract_symmetry', comm)
+      return
+    endif
+
+    deallocate (ZU, stat=ierr)
+    if (ierr /= 0) then
+      call set_error_dealloc(error, 'Error in deallocating ZU in sitesym_dis_extract_symmetry', comm)
+      return
+    endif
+
+    deallocate (deltaU, stat=ierr)
+    if (ierr /= 0) then
+      call set_error_dealloc(error, 'Error in deallocating deltaU in sitesym_dis_extract_symmetry', comm)
+      return
+    endif
+
+    deallocate (carr, stat=ierr)
+    if (ierr /= 0) then
+      call set_error_dealloc(error, 'Error in deallocating carr in sitesym_dis_extract_symmetry', comm)
+      return
+    endif
+
     return
   end subroutine sitesym_dis_extract_symmetry
 
@@ -640,7 +698,6 @@ contains
   subroutine sitesym_read(sitesym, num_bands, num_kpts, num_wann, seedname, error, comm)
     !================================================!
 
-    use w90_io, only: io_file_unit
     use w90_wannier90_types, only: sitesym_type
     use w90_error, only: w90_error_type, set_error_file, set_error_alloc
 
@@ -649,18 +706,17 @@ contains
     ! arguments
     type(sitesym_type), intent(inout) :: sitesym
     type(w90_error_type), allocatable, intent(out) :: error
-    type(w90comm_type), intent(in) :: comm
+    type(w90_comm_type), intent(in) :: comm
 
     integer, intent(in) :: num_bands
     integer, intent(in) :: num_wann
     integer, intent(in) :: num_kpts
-    character(len=50), intent(in)  :: seedname
+    character(len=*), intent(in)  :: seedname
 
     ! local variables
     integer :: iu, ibnum, iknum, ierr
 
-    iu = io_file_unit()
-    open (unit=iu, file=trim(seedname)//".dmn", form='formatted', status='old', action='read')
+    open (newunit=iu, file=trim(seedname)//".dmn", form='formatted', status='old', action='read')
     read (iu, *)
     read (iu, *) ibnum, sitesym%nsymmetry, sitesym%nkptirr, iknum
     if (ibnum .ne. num_bands) then
@@ -719,7 +775,7 @@ contains
 
     type(sitesym_type), intent(inout) :: sitesym
     type(w90_error_type), allocatable, intent(out) :: error
-    type(w90comm_type), intent(in) :: comm
+    type(w90_comm_type), intent(in) :: comm
     integer :: ierr
 
     deallocate (sitesym%ik2ir, stat=ierr)
