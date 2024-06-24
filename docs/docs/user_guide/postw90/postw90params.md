@@ -854,7 +854,6 @@ The valid options for this parameter are:
 The default value is `fermi_lines`.
 
 !!! note
-
     When `kslice_fermi_lines_colour = none` the `gnuplot` scripts draw
     the $k$-slices with a square shape, even when `kslice_b1` and
     `kslice_b2` below are not at right angles, or do not have equal lengths.
