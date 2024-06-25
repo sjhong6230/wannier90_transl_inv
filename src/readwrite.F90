@@ -2103,6 +2103,7 @@ contains
     !!
     !================================================!
 
+    use w90_comms, only: mpirank
     use w90_constants, only: eps6
     use w90_error, only: w90_error_type, set_error_file, set_error_file, set_error_alloc
     use w90_utility, only: utility_recip_lattice
@@ -2137,15 +2138,18 @@ contains
     character(len=33) :: header
     real(kind=dp) :: tmp_latt(3, 3), tmp_kpt_latt(3, num_kpts)
     integer :: tmp_excl_bands(1:num_exclude_bands), tmp_mp_grid(1:3)
+    logical :: on_root
 
-    write (stdout, '(1x,3a)') 'Reading restart information from file ', trim(seedname), '.chk :'
+    on_root = (mpirank(comm) == 0)
+
+    if (on_root) write (stdout, '(1x,3a)') 'Reading restart information from file ', trim(seedname), '.chk :'
 
     open (newunit=chk_unit, file=trim(seedname)//'.chk', status='old', form='unformatted', err=121)
     io_unit = chk_unit
 
     ! Read comment line
     read (chk_unit) header
-    write (stdout, '(1x,a)', advance='no') trim(header)
+    if (on_root) write (stdout, '(1x,a)', advance='no') trim(header)
 
     ! Consistency checks
     read (chk_unit) ntmp                           ! Number of bands
@@ -2247,6 +2251,7 @@ contains
     !!
     !================================================!
 
+    use w90_comms, only: mpirank
     use w90_error, only: w90_error_type, set_error_file, set_error_file, set_error_alloc
     use w90_utility, only: utility_recip_lattice
 
@@ -2319,7 +2324,7 @@ contains
 
     close (chk_unit)
 
-    write (stdout, '(a/)') ' ... done'
+    if (mpirank(comm) == 0) write (stdout, '(a/)') ' ... done'
 
     return
 
