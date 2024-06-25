@@ -70,7 +70,7 @@ contains
     use w90_error_base, only: w90_error_type
     use w90_error, only: set_error_input, set_error_fatal, set_error_alloc
     use w90_readwrite, only: w90_readwrite_in_file, w90_readwrite_clean_infile
-    use w90_wannier90_readwrite, only: w90_wannier90_readwrite_read_special, w90_extra_io_type
+    use w90_wannier90_readwrite, only: w90_wannier90_readwrite_read_special
 
     implicit none
 
@@ -370,19 +370,15 @@ contains
       return
     endif
 
-    u(:, :, :) = 0.d0
-    uopt(:, :, :) = 0.d0
+    u(:, :, :) = common_data%u_matrix
+    uopt(:, :, :) = common_data%u_opt
     m(:, :, :, :) = 0.d0
 
     do ikl = 1, nkrank
       ikg = global_k(ikl)
-      u(:, :, ikg) = common_data%u_matrix(:, :, ikl)
-      uopt(:, :, ikg) = common_data%u_opt(:, :, ikl)
       m(:, :, :, ikg) = common_data%m_matrix_local(1:nw, 1:nw, :, ikl)
     enddo
 
-    call comms_reduce(u(1, 1, 1), nw*nw*nk, 'SUM', error, common_data%comm)
-    call comms_reduce(uopt(1, 1, 1), nb*nw*nk, 'SUM', error, common_data%comm)
     call comms_reduce(m(1, 1, 1, 1), nw*nw*nn*nk, 'SUM', error, common_data%comm)
     if (allocated(error)) then
       call prterr(error, ierr, istdout, istderr, common_data%comm)

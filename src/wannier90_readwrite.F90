@@ -31,13 +31,6 @@ module w90_wannier90_readwrite
 
   private
 
-  type w90_extra_io_type
-    character(len=20) :: one_dim_axis = 'none'
-    real(kind=dp), allocatable :: ccentres_frac(:, :)
-    !! Constrained centres
-  end type w90_extra_io_type
-
-  public :: w90_extra_io_type
   public :: w90_wannier90_readwrite_memory_estimate
   public :: w90_wannier90_readwrite_read
   public :: w90_wannier90_readwrite_read_special
@@ -52,10 +45,9 @@ contains
                                                   kpt_latt, wann_control, proj, proj_input, &
                                                   select_proj, w90_system, w90_calculation, &
                                                   real_lattice, bohr, mp_grid, num_bands, &
-                                                  exclude_bands, &
-                                                  num_kpts, num_proj, num_wann, gamma_only, &
-                                                  lhasproj, use_bloch_phases, distk, stdout, &
-                                                  error, comm)
+                                                  exclude_bands, num_kpts, num_proj, num_wann, &
+                                                  gamma_only, lhasproj, use_bloch_phases, distk, &
+                                                  stdout, error, comm)
     !================================================!
     !
     !! Read parameters and calculate derived values
@@ -171,16 +163,14 @@ contains
 
   !================================================!
   subroutine w90_wannier90_readwrite_read(settings, band_plot, dis_control, dis_spheres, &
-                                          dis_manifold, fermi_energy_list, &
-                                          fermi_surface_data, &
-                                          output_file, wvfn_read, wann_control, &
-                                          real_space_ham, kpoint_path, w90_system, &
-                                          tran, print_output, wann_plot, w90_extra_io, ws_region, &
-                                          real_lattice, w90_calculation, bohr, &
-                                          symmetrize_eps, num_bands, num_kpts, &
-                                          num_wann, optimisation, calc_only_A, cp_pp, &
-                                          gamma_only, lsitesymmetry, use_bloch_phases, &
-                                          seedname, stdout, error, comm)
+                                          dis_manifold, fermi_energy_list, fermi_surface_data, &
+                                          output_file, wvfn_read, wann_control, real_space_ham, &
+                                          kpoint_path, w90_system, tran, print_output, wann_plot, &
+                                          ws_region, real_lattice, w90_calculation, bohr, &
+                                          symmetrize_eps, num_bands, num_kpts, num_wann, &
+                                          optimisation, calc_only_A, cp_pp, gamma_only, &
+                                          lsitesymmetry, use_bloch_phases, seedname, stdout, &
+                                          error, comm)
     !================================================!
     !
     !! Read parameters and calculate derived values
@@ -211,7 +201,6 @@ contains
     type(w90_calculation_type), intent(inout) :: w90_calculation
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
-    type(w90_extra_io_type), intent(inout) :: w90_extra_io
     type(w90_system_type), intent(inout) :: w90_system
     type(wann_control_type), intent(inout) :: wann_control
     type(wannier_plot_type), intent(inout) :: wann_plot
@@ -272,7 +261,7 @@ contains
       if (allocated(error)) return
 
       call w90_wannier90_readwrite_read_wannierise(settings, wann_control, num_wann, &
-                                                   w90_extra_io%ccentres_frac, stdout, error, comm)
+                                                   stdout, error, comm)
       if (allocated(error)) return
 
       call w90_readwrite_read_gamma_only(settings, gamma_only, num_kpts, error, comm)
@@ -320,9 +309,8 @@ contains
       if (allocated(error)) return
 
     endif
-    ! BGS tran/plot related stuff...
-    call w90_wannier90_readwrite_read_one_dim(settings, w90_calculation, band_plot, &
-                                              real_space_ham, w90_extra_io%one_dim_axis, &
+
+    call w90_wannier90_readwrite_read_one_dim(settings, w90_calculation, band_plot, real_space_ham, &
                                               tran%read_ht, error, comm)
     if (allocated(error)) return
 
@@ -345,11 +333,10 @@ contains
       if (allocated(error)) return
 
       if (wann_control%constrain%constrain) then
-        call w90_wannier90_readwrite_read_constrained_centres(settings, w90_extra_io%ccentres_frac, &
+        call w90_wannier90_readwrite_read_constrained_centres(settings, &
                                                               wann_control, real_lattice, &
                                                               num_wann, print_output%iprint, &
                                                               stdout, error, comm)
-        !fixme, ccentres_frac is not available for printing later...
         if (allocated(error)) return
       endif
     endif
@@ -599,21 +586,22 @@ contains
 
   !================================================!
   subroutine w90_wannier90_readwrite_read_wannierise(settings, wann_control, num_wann, &
-                                                     ccentres_frac, stdout, error, comm)
+                                                     stdout, error, comm)
     !================================================!
     ! Wannierise
     !================================================!
     use w90_error, only: w90_error_type
     implicit none
 
+    ! arguments
     integer, intent(in) :: num_wann
     integer, intent(in) :: stdout
-    real(kind=dp), allocatable, intent(inout) :: ccentres_frac(:, :)
     type(settings_type), intent(inout) :: settings
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
     type(wann_control_type), intent(inout) :: wann_control
 
+    ! local variables
     integer :: ierr
     logical :: found
 
@@ -752,11 +740,6 @@ contains
 
     if (found .and. wann_control%constrain%constrain) then
       if (wann_control%constrain%selective_loc) then
-        allocate (ccentres_frac(num_wann, 3), stat=ierr)
-        if (ierr /= 0) then
-          call set_error_alloc(error, 'Error allocating ccentres_frac in w90_readwrite_get_centre_constraints', comm)
-          return
-        endif
         allocate (wann_control%constrain%centres(num_wann, 3), stat=ierr)
         if (ierr /= 0) then
           call set_error_alloc(error, 'Error allocating ccentres_cart in w90_readwrite_get_centre_constraints', comm)
@@ -1253,7 +1236,8 @@ contains
   end subroutine w90_wannier90_readwrite_read_wann_plot
 
   !================================================!
-  subroutine w90_wannier90_readwrite_read_fermi_surface(settings, fermi_surface_data, fermi_surface_plot, error, comm)
+  subroutine w90_wannier90_readwrite_read_fermi_surface(settings, fermi_surface_data, &
+                                                        fermi_surface_plot, error, comm)
     !================================================!
     use w90_error, only: w90_error_type
     implicit none
@@ -1287,13 +1271,12 @@ contains
   end subroutine w90_wannier90_readwrite_read_fermi_surface
 
   !================================================!
-  subroutine w90_wannier90_readwrite_read_one_dim(settings, w90_calculation, band_plot, real_space_ham, one_dim_axis, &
-                                                  tran_read_ht, error, comm)
+  subroutine w90_wannier90_readwrite_read_one_dim(settings, w90_calculation, band_plot, &
+                                                  real_space_ham, tran_read_ht, error, comm)
     !================================================!
     use w90_error, only: w90_error_type
     implicit none
 
-    character(len=*), intent(inout) :: one_dim_axis
     logical, intent(in) :: tran_read_ht
     type(band_plot_type), intent(in) :: band_plot
     type(real_space_ham_type), intent(inout) :: real_space_ham
@@ -1303,6 +1286,7 @@ contains
     type(w90_error_type), allocatable, intent(out) :: error
 
     logical :: found
+    character(len=256) :: one_dim_axis
 
     call w90_readwrite_get_keyword(settings, 'one_dim_axis', found, error, comm, c_value=one_dim_axis)
     if (allocated(error)) return
@@ -1352,7 +1336,8 @@ contains
   end subroutine w90_wannier90_readwrite_read_hamil
 
   !================================================!
-  subroutine w90_wannier90_readwrite_read_bloch_phase(settings, use_bloch_phases, disentanglement, error, comm)
+  subroutine w90_wannier90_readwrite_read_bloch_phase(settings, use_bloch_phases, disentanglement, &
+                                                      error, comm)
     !================================================!
     use w90_error, only: w90_error_type
     implicit none
@@ -1398,7 +1383,6 @@ contains
     integer :: i, k, ierr, rows
     logical :: found
 
-    ! get the nnkpts block -- this is allowed only in postproc-setup mode
     call w90_readwrite_get_block_length(settings, 'nnkpts', kmesh_info%explicit_nnkpts, rows, error, comm)
     if (allocated(error)) return
 
@@ -1643,14 +1627,13 @@ contains
   end subroutine w90_wannier90_readwrite_read_projections
 
   !================================================!
-  subroutine w90_wannier90_readwrite_read_constrained_centres(settings, ccentres_frac, wann_control, &
+  subroutine w90_wannier90_readwrite_read_constrained_centres(settings, wann_control, &
                                                               real_lattice, num_wann, iprint, &
                                                               stdout, error, comm)
     !================================================!
     implicit none
 
     integer, intent(in) :: num_wann, iprint, stdout
-    real(kind=dp), intent(inout) :: ccentres_frac(:, :)
     real(kind=dp), intent(in) :: real_lattice(3, 3)
     type(settings_type), intent(inout) :: settings
     type(w90_comm_type), intent(in) :: comm
@@ -1667,7 +1650,7 @@ contains
     if (found) then
       if (wann_control%constrain%constrain) then
         ! Allocate array for constrained centres
-        call w90_readwrite_get_centre_constraints(settings, ccentres_frac, &
+        call w90_readwrite_get_centre_constraints(settings, &
                                                   wann_control%constrain%centres, &
                                                   wann_control%guiding_centres%centres, &
                                                   num_wann, real_lattice, error, comm)
@@ -1685,7 +1668,7 @@ contains
           return
         else
           ! Allocate array for constrained centres
-          call w90_readwrite_get_centre_constraints(settings, ccentres_frac, &
+          call w90_readwrite_get_centre_constraints(settings, &
                                                     wann_control%constrain%centres, &
                                                     wann_control%guiding_centres%centres, &
                                                     num_wann, real_lattice, error, comm)
@@ -1711,11 +1694,11 @@ contains
                                            fermi_energy_list, fermi_surface_data, kpt_latt, &
                                            output_file, wvfn_read, wann_control, proj, proj_input, &
                                            real_space_ham, select_proj, kpoint_path, tran, &
-                                           print_output, wannier_data, wann_plot, w90_extra_io, &
-                                           w90_calculation, real_lattice, symmetrize_eps, mp_grid, &
-                                           num_bands, num_kpts, num_proj, num_wann, optimisation, &
-                                           cp_pp, gamma_only, lsitesymmetry, spinors, &
-                                           use_bloch_phases, stdout)
+                                           print_output, wannier_data, wann_plot, w90_calculation, &
+                                           real_lattice, symmetrize_eps, mp_grid, num_bands, &
+                                           num_kpts, num_proj, num_wann, optimisation, cp_pp, &
+                                           gamma_only, lsitesymmetry, spinors, use_bloch_phases, &
+                                           stdout)
     !================================================!
     !
     !! write wannier90 parameters to stdout
@@ -1743,7 +1726,6 @@ contains
     type(select_projection_type), intent(in) :: select_proj
     type(proj_type), allocatable, intent(in) :: proj_input(:)
     type(kpoint_path_type), intent(in) :: kpoint_path
-    type(w90_extra_io_type), intent(in) :: w90_extra_io
     type(wannier_plot_type), intent(in) :: wann_plot
     type(proj_type), allocatable, intent(in) :: proj(:)
 
@@ -1767,16 +1749,26 @@ contains
     logical, intent(in) :: spinors
 
     ! local variables
-    real(kind=dp) :: recip_lattice(3, 3), inv_lattice(3, 3), pos_frac(3), kpt_cart(3), volume
+    character(len=1) :: one_dim_axis
     integer :: i, nkp, loop, nat, nsp, bands_num_spec_points
-    real(kind=dp) :: cell_volume
     logical :: disentanglement
+    real(kind=dp) :: ccentres_frac(3)
+    real(kind=dp) :: cell_volume
+    real(kind=dp) :: recip_lattice(3, 3), inv_lattice(3, 3), pos_frac(3), kpt_cart(3), volume
 
     disentanglement = (num_bands > num_wann)
-    if (w90_calculation%transport .and. tran%read_ht) goto 401 !really?  fixme jj
 
-    ! System
-    if (print_output%iprint > 0) then
+    if (real_space_ham%one_dim_dir == 1) one_dim_axis = 'x'
+    if (real_space_ham%one_dim_dir == 2) one_dim_axis = 'y'
+    if (real_space_ham%one_dim_dir == 3) one_dim_axis = 'z'
+
+    call utility_inverse_mat(real_lattice, inv_lattice)
+
+    ! skip most printout if (w90_calculation%transport .and. tran%read_ht); continues with transport at end
+
+    if (print_output%iprint > 0 .and. .not. (w90_calculation%transport .and. tran%read_ht)) then
+
+      ! System
       write (stdout, *)
       write (stdout, '(36x,a6)') '------'
       write (stdout, '(36x,a6)') 'SYSTEM'
@@ -1821,7 +1813,6 @@ contains
           write (stdout, '(1x,a)') '|   Site       Fractional Coordinate          Cartesian Coordinate (Bohr)    |'
         endif
         write (stdout, '(1x,a)') '+----------------------------------------------------------------------------+'
-        call utility_inverse_mat(real_lattice, inv_lattice)
         do nsp = 1, atom_data%num_species
           do nat = 1, atom_data%species_num(nsp)
             call utility_cart_to_frac(atom_data%pos_cart(:, nat, nsp), pos_frac, inv_lattice)
@@ -1842,9 +1833,10 @@ contains
         write (stdout, '(1x,a)') '| Wannier#        Original Centres              Constrained centres          |'
         write (stdout, '(1x,a)') '+----------------------------------------------------------------------------+'
         do i = 1, wann_control%constrain%slwf_num
-!fixme JJ ccentres_frac is not available (only temporary read) cart is available in control or so
-!          write (stdout, '(1x,a1,2x,i3,2x,3F10.5,3x,a1,1x,3F10.5,4x,a1)') &
-!    &                    '|', i, w90_extra_io%ccentres_frac(i, :), '|', wannier_data%centres(:, i), '|'
+          call utility_cart_to_frac(wann_control%constrain%centres(i, :), ccentres_frac, inv_lattice)
+          ! note, this printout is in crystal coordinates; not sure why wannier_centres are printed here??
+          write (stdout, '(1x,a1,2x,i3,2x,3F10.5,3x,a1,1x,3F10.5,4x,a1)') &
+    &                    '|', i, ccentres_frac(:), '|', wannier_data%centres(:, i), '|'
         end do
         write (stdout, '(1x,a)') '*----------------------------------------------------------------------------*'
       end if
@@ -2099,11 +2091,9 @@ contains
             write (stdout, '(1x,a46,10x,I8,13x,a1)') '|   Dimension of the system                  :', &
               real_space_ham%system_dim, '|'
             if (real_space_ham%system_dim .eq. 1) &
-              write (stdout, '(1x,a46,10x,a8,13x,a1)') '|   System extended in                       :', &
-              trim(w90_extra_io%one_dim_axis), '|'
+              write (stdout, '(1x,a46,10x,a8,13x,a1)') '|   System extended in                       :', one_dim_axis, '|'
             if (real_space_ham%system_dim .eq. 2) &
-              write (stdout, '(1x,a46,10x,a8,13x,a1)') '|   System confined in                       :', &
-              trim(w90_extra_io%one_dim_axis), '|'
+              write (stdout, '(1x,a46,10x,a8,13x,a1)') '|   System confined in                       :', one_dim_axis, '|'
             write (stdout, '(1x,a46,10x,F8.3,13x,a1)') '|   Hamiltonian cut-off value                :', &
               real_space_ham%hr_cutoff, '|'
             write (stdout, '(1x,a46,10x,F8.3,13x,a1)') '|   Hamiltonian cut-off distance             :', &
@@ -2147,9 +2137,8 @@ contains
         endif
         !
       endif
-    endif !iprint > 0
+    endif !iprint > 0 and not (transport && read_ht)
 
-401 continue
     !
     ! Transport
     !
@@ -2166,8 +2155,8 @@ contains
       else
         !
         write (stdout, '(1x,a46,10x,a8,13x,a1)') '|   Hamiltonian from external files          :', 'F', '|'
-        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|   System extended in                       :', &
-          trim(w90_extra_io%one_dim_axis), '|'
+
+        write (stdout, '(1x,a46,10x,a8,13x,a1)') '|   System extended in                       :', one_dim_axis, '|'
         !
       end if
 
@@ -2196,8 +2185,8 @@ contains
   subroutine w90_wannier90_readwrite_w90_dealloc(atom_data, band_plot, dis_spheres, dis_manifold, &
                                                  exclude_bands, kmesh_input, kpt_latt, &
                                                  wann_control, proj, proj_input, select_proj, &
-                                                 kpoint_path, wannier_data, wann_plot, &
-                                                 w90_extra_io, eigval, error, comm)
+                                                 kpoint_path, wannier_data, wann_plot, eigval, &
+                                                 error, comm)
     !================================================!
     use w90_error, only: w90_error_type
 
@@ -2213,7 +2202,6 @@ contains
     type(atom_data_type), intent(inout) :: atom_data
     type(kpoint_path_type), intent(inout) :: kpoint_path
     type(select_projection_type), intent(inout) :: select_proj
-    type(w90_extra_io_type), intent(inout) :: w90_extra_io
     type(wannier_plot_type), intent(inout) :: wann_plot
     type(proj_type), allocatable, intent(inout) :: proj(:)
     type(proj_type), allocatable, intent(inout) :: proj_input(:)
@@ -2243,13 +2231,6 @@ contains
       deallocate (band_plot%project, stat=ierr)
       if (ierr /= 0) then
         call set_error_dealloc(error, 'Error in deallocating bands_plot_project in w90_readwrite_dealloc', comm)
-        return
-      endif
-    endif
-    if (allocated(w90_extra_io%ccentres_frac)) then
-      deallocate (w90_extra_io%ccentres_frac, stat=ierr)
-      if (ierr /= 0) then
-        call set_error_dealloc(error, 'Error deallocating ccentres_frac in w90_wannier90_readwrite_w90_dealloc', comm)
         return
       endif
     endif
@@ -2389,8 +2370,9 @@ contains
   end subroutine w90_wannier90_readwrite_write_chkpt
 
   !================================================!
-  subroutine w90_wannier90_readwrite_memory_estimate(atom_data, kmesh_info, wann_control, proj_input, print_output, &
-                                                     num_bands, num_kpts, num_proj, num_wann, optimisation, &
+  subroutine w90_wannier90_readwrite_memory_estimate(atom_data, kmesh_info, wann_control, &
+                                                     proj_input, print_output, num_bands, &
+                                                     num_kpts, num_proj, num_wann, optimisation, &
                                                      gamma_only, stdout)
     !================================================!
     !

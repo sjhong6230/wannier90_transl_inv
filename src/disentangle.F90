@@ -136,8 +136,8 @@ contains
 
     ! Set up energy windows
     if (dis_manifold%frozen_proj) then
-      call dis_windows_proj(dis_manifold, eigval_opt, a_matrix, m_matrix_orig_local, kpt_latt, &
-                            recip_lattice, indxfroz, indxnfroz, ndimfroz, dis_manifold%nfirstwin, &
+      call dis_windows_proj(dis_manifold, eigval_opt, a_matrix, m_matrix_orig_local, &
+                            indxfroz, indxnfroz, ndimfroz, dis_manifold%nfirstwin, &
                             print_output%iprint, kmesh_info%nnlist, kmesh_info%nntot, num_bands, &
                             num_kpts, num_wann, print_output%timing_level, lfrozen, linner, &
                             on_root, stdout, dist_k, global_k, my_node_id, timer, error, comm)
@@ -1182,7 +1182,7 @@ contains
   end subroutine dis_windows
 
   subroutine dis_windows_proj(dis_manifold, eigval_opt, a_matrix, m_matrix_orig_local, &
-                              kpt_latt, recip_lattice, indxfroz, indxnfroz, ndimfroz, nfirstwin, iprint, nnlist, &
+                              indxfroz, indxnfroz, ndimfroz, nfirstwin, iprint, nnlist, &
                               nntot, num_bands, num_kpts, num_wann, timing_level, lfrozen, &
                               linner, on_root, stdout, dist_k, global_k, my_node_id, timer, error, comm)
     !==================================================================!
@@ -1242,7 +1242,6 @@ contains
 
     complex(kind=dp), intent(inout) :: a_matrix(:, :, :)
     complex(kind=dp), intent(inout) :: m_matrix_orig_local(:, :, :, :)
-    real(kind=dp), intent(in) :: kpt_latt(3, num_kpts), recip_lattice(3, 3)
     real(kind=dp), intent(inout) :: eigval_opt(:, :)
 
     logical, intent(in) :: on_root
@@ -1257,7 +1256,7 @@ contains
     !                     orignal outter window, and to generate a new outter window.
     !                     (equals 1 if it is the bottom of outer window)
 
-    integer :: nkp, nn, nkp2, nkp_global, ierr
+    integer :: nkp, nn, nkp2, nkp_global
     integer :: i, j, k, l
     real(kind=dp) :: projs(num_bands)
     integer :: invindxkeep(num_bands)

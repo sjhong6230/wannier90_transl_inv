@@ -223,7 +223,7 @@ contains
     use w90_comms, only: w90_comm_type, valid_communicator
     use w90_kmesh, only: kmesh_get
     use w90_wannier90_readwrite, only: w90_wannier90_readwrite_read, &
-      w90_wannier90_readwrite_read_special, w90_extra_io_type
+      w90_wannier90_readwrite_read_special
 
     implicit none
 
@@ -235,7 +235,6 @@ contains
 
     ! local variables
     type(w90_error_type), allocatable :: error
-    type(w90_extra_io_type) :: io_params
     logical :: cp_pp, disentanglement
 
     ierr = 0
@@ -333,7 +332,7 @@ contains
                                       common_data%wvfn_read, common_data%wann_control, &
                                       common_data%real_space_ham, common_data%kpoint_path, &
                                       common_data%w90_system, common_data%tran, &
-                                      common_data%print_output, common_data%wann_plot, io_params, &
+                                      common_data%print_output, common_data%wann_plot, &
                                       common_data%ws_region, common_data%real_lattice, &
                                       common_data%w90_calculation, common_data%physics%bohr, &
                                       common_data%sitesym%symmetrize_eps, common_data%num_bands, &
@@ -361,7 +360,7 @@ contains
     use w90_error_base, only: w90_error_type
     use w90_error, only: set_error_input, set_error_fatal, set_error_alloc, code_mpi
     use w90_readwrite, only: w90_readwrite_in_file, w90_readwrite_clean_infile
-    use w90_wannier90_readwrite, only: w90_wannier90_readwrite_read, w90_extra_io_type
+    use w90_wannier90_readwrite, only: w90_wannier90_readwrite_read
 
     implicit none
 
@@ -372,7 +371,6 @@ contains
 
     ! local variables
     type(w90_error_type), allocatable :: error
-    type(w90_extra_io_type) :: io_params
     logical :: cp_pp
 
     ierr = 0
@@ -408,7 +406,7 @@ contains
                                       common_data%wvfn_read, common_data%wann_control, &
                                       common_data%real_space_ham, common_data%kpoint_path, &
                                       common_data%w90_system, common_data%tran, &
-                                      common_data%print_output, common_data%wann_plot, io_params, &
+                                      common_data%print_output, common_data%wann_plot, &
                                       common_data%ws_region, common_data%real_lattice, &
                                       common_data%w90_calculation, common_data%physics%bohr, &
                                       common_data%sitesym%symmetrize_eps, common_data%num_bands, &
@@ -1157,7 +1155,7 @@ contains
   subroutine input_print_details(common_data, istdout, istderr, ierr)
     use w90_error_base, only: w90_error_type
     use w90_readwrite, only: w90_readwrite_write_header
-    use w90_wannier90_readwrite, only: w90_wannier90_readwrite_write, w90_extra_io_type
+    use w90_wannier90_readwrite, only: w90_wannier90_readwrite_write
     use w90_comms, only: mpisize, mpirank
 
     implicit none
@@ -1169,7 +1167,6 @@ contains
 
     ! local variables
     type(w90_error_type), allocatable :: error
-    type(w90_extra_io_type) :: io_params ! what is this? fixme
     integer :: mpi_size
 
     ierr = 0
@@ -1194,7 +1191,7 @@ contains
                                        common_data%select_proj, common_data%kpoint_path, &
                                        common_data%tran, common_data%print_output, &
                                        common_data%wannier_data, &
-                                       common_data%wann_plot, io_params, &
+                                       common_data%wann_plot, &
                                        common_data%w90_calculation, common_data%real_lattice, &
                                        common_data%sitesym%symmetrize_eps, common_data%mp_grid, &
                                        common_data%num_bands, common_data%num_kpts, &

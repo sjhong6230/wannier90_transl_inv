@@ -419,7 +419,7 @@ contains
     character(len=20), allocatable :: ctemp(:)
 
     ! mpi variables
-    integer ::  my_node_id, num_nodes, size_rdist, size_ndeg
+    integer ::  my_node_id, num_nodes
     logical ::  on_root
     integer, allocatable :: counts(:)
     integer, allocatable :: displs(:)

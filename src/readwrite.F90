@@ -3564,7 +3564,7 @@ contains
     return
   end subroutine w90_readwrite_get_range_vector
 
-  subroutine w90_readwrite_get_centre_constraints(settings, ccentres_frac, ccentres_cart, &
+  subroutine w90_readwrite_get_centre_constraints(settings, ccentres_cart, &
                                                   proj_site, num_wann, real_lattice, error, comm)
     !================================================!
     !!  assigns projection centres as default centre constraints and global
@@ -3572,10 +3572,12 @@ contains
     !!  the centre_constraints block for individual centre constraint parameters
     !
     !================================================!
-    use w90_error, only: w90_error_type, set_error_input
+    use w90_error, only: w90_error_type, set_error_input, set_error_alloc, set_error_dealloc
     use w90_utility, only: utility_frac_to_cart
     implicit none
-    real(kind=dp), intent(inout) :: ccentres_frac(:, :), ccentres_cart(:, :)
+
+    ! arguments
+    real(kind=dp), intent(inout) :: ccentres_cart(:, :)
     real(kind=dp), intent(in) :: proj_site(:, :)
     integer, intent(in) :: num_wann
     real(kind=dp), intent(in) :: real_lattice(3, 3)
@@ -3583,9 +3585,17 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(settings_type), intent(inout) :: settings
 
-    integer :: loop1, index1, constraint_num, loop2
+    ! local variables
+    integer :: loop1, index1, constraint_num, loop2, ierr
     integer :: column, start, finish, wann
     character(len=maxlen) :: dummy
+    real(kind=dp), allocatable :: ccentres_frac(:, :)
+
+    allocate (ccentres_frac(num_wann, 3), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error allocating ccentres_frac in w90_readwrite_get_centre_constraints', comm)
+      return
+    endif
 
     do loop1 = 1, num_wann
       do loop2 = 1, 3
@@ -3655,6 +3665,12 @@ contains
       call utility_frac_to_cart(ccentres_frac(loop1, :), &
                                 ccentres_cart(loop1, :), real_lattice)
     end do
+
+    deallocate (ccentres_frac, stat=ierr)
+    if (ierr /= 0) then
+      call set_error_dealloc(error, 'Error deallocating ccentres_frac in w90_readwrite_get_centre_constraints', comm)
+      return
+    endif
   end subroutine w90_readwrite_get_centre_constraints
 
   !================================================!
