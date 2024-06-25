@@ -92,7 +92,7 @@ clean:
 	cd $(ROOTDIR)/test-suite && ./clean_tests
 
 veryclean: clean
-	cd $(ROOTDIR) && rm -f wannier90.x postw90.x libwannier.a libwan2.a w90chk2chk.x w90spn2spn.x
+	cd $(ROOTDIR) && rm -f wannier90.x postw90.x libwannier.a libwan2.a w90chk2chk.x w90spn2spn.x libwan2-extra.a
 	cd $(ROOTDIR)/test-suite && ./clean_tests -i
 
 thedoc:
