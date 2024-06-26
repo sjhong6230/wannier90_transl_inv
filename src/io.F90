@@ -447,8 +447,8 @@ contains
         call comms_no_sync_send(mesg, 128, 0, le, comm)
       endif
     endif
-    call flush(istdout)
-    call flush(istderr)
+    flush(istdout)
+    flush(istderr)
 
     error%code = code_deactivated
     deallocate (error) ! else allocated error trips uncaught error mechanism (ifdef W90DEV, see io.F90)
