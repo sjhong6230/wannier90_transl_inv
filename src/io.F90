@@ -394,13 +394,13 @@ contains
 
   subroutine prterr(error, ie, istdout, istderr, comm)
     use w90_comms, only: comms_no_sync_send, comms_no_sync_recv, w90_comm_type, mpirank, mpisize
-    use w90_error_base, only: code_remote, w90_error_type
+    use w90_error_base, only: code_deactivated, code_remote, w90_error_type
 
     ! arguments
     integer, intent(inout) :: ie ! global error value to be returned
     integer, intent(in) :: istderr, istdout
     type(w90_comm_type), intent(in) :: comm
-    type(w90_error_type), allocatable, intent(in) :: error
+    type(w90_error_type), allocatable, intent(inout) :: error
 
     ! local variables
     type(w90_error_type), allocatable :: le ! unchecked error state for calls made in this routine
@@ -449,6 +449,9 @@ contains
     endif
     call flush(istdout)
     call flush(istderr)
+
+    error%code = code_deactivated
+    deallocate (error) ! else allocated error trips uncaught error mechanism (ifdef W90DEV, see io.F90)
   end subroutine prterr
 
 end module w90_io

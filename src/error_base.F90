@@ -30,12 +30,14 @@ module w90_error_base
   end type w90_error_type
 
   integer, parameter :: code_remote = -99 ! special code for error triggered by other mpi rank
+  integer, parameter :: code_deactivated = -888 ! special code for error triggered by other mpi rank
 
 contains
 
   subroutine untrapped_error(err)
     type(w90_error_type), intent(in) :: err
     ! this routine should never be called, so write to stderr and call "stop" in desparation
+    if (err%code == code_deactivated) return
     write (0, *) "UNTRAPPED ERROR: ", err%code
     write (0, *) "UNTRAPPED ERROR: ", err%message
     stop
