@@ -67,6 +67,8 @@ module w90_library_extra
 
 contains
   subroutine input_reader_special(common_data, seedname, istdout, istderr, ierr)
+    !! Read key variables from main input (.win) file; of use by wannier90.x only
+
     use w90_error_base, only: w90_error_type
     use w90_error, only: set_error_input, set_error_fatal, set_error_alloc
     use w90_readwrite, only: w90_readwrite_in_file, w90_readwrite_clean_infile
@@ -82,7 +84,6 @@ contains
 
     ! local variables
     type(w90_error_type), allocatable :: error
-    logical :: disentanglement
 
     ierr = 0
 
@@ -101,10 +102,9 @@ contains
                                               common_data%w90_calculation, &
                                               common_data%real_lattice, common_data%physics%bohr, &
                                               common_data%mp_grid, common_data%num_bands, &
-                                              common_data%exclude_bands, &
-                                              common_data%num_kpts, common_data%num_proj, &
-                                              common_data%num_wann, common_data%gamma_only, &
-                                              common_data%lhasproj, &
+                                              common_data%exclude_bands, common_data%num_kpts, &
+                                              common_data%num_proj, common_data%num_wann, &
+                                              common_data%gamma_only, common_data%lhasproj, &
                                               common_data%use_bloch_phases, &
                                               common_data%dist_kpoints, istdout, error, &
                                               common_data%comm)
@@ -115,9 +115,7 @@ contains
 
     common_data%seedname = seedname
 
-    disentanglement = (common_data%num_bands > common_data%num_wann)
-
-    if (disentanglement) then
+    if (common_data%num_bands > common_data%num_wann) then
       allocate (common_data%dis_manifold%ndimwin(common_data%num_kpts), stat=ierr)
       if (ierr /= 0) then
         call set_error_alloc(error, 'Error allocating ndimwin in input_reader_special() call', common_data%comm)
@@ -158,11 +156,14 @@ contains
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     endif
+
     if (allocated(common_data%settings%in_data)) deallocate (common_data%settings%in_data)
   end subroutine input_reader_special
 
   subroutine write_kmesh(common_data, istdout, istderr, ierr)
-    use w90_comms, only: mpirank, comms_sync_err
+    !! Writes the .nnkp file instructing a DFT code what projections and overlaps to construct
+
+    use w90_comms, only: mpirank, comms_sync_error
     use w90_error_base, only: w90_error_type
     use w90_kmesh, only: kmesh_get, kmesh_write
 
@@ -191,7 +192,7 @@ contains
         return
       endif
     endif
-    call comms_sync_err(common_data%comm, error, 0) ! this is necessary since non-root may never enter an mpi collective if root has exited here
+    call comms_sync_error(common_data%comm, error, 0) ! this is necessary since non-root may never enter an mpi collective if root has exited here
   end subroutine write_kmesh
 
   subroutine overlaps(common_data, istdout, istderr, ierr)

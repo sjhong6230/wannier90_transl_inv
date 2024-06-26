@@ -62,7 +62,7 @@ program wannier
   use w90_library
   use w90_library_extra ! for input_reader_special, overlaps, etc
 
-  use w90_comms, only: w90_comm_type, comms_sync_err
+  use w90_comms, only: w90_comm_type, comms_sync_error
   use w90_io, only: io_print_timings, io_commandline, io_date, prterr
   use w90_sitesym, only: sitesym_read
   use w90_error, only: w90_error_type, set_error_input
@@ -132,7 +132,7 @@ program wannier
   if (rank == -common_data%print_output%timing_level) then
     call set_error_input(error, 'received unlucky_rank', common_data%comm)
   else
-    call comms_sync_err(common_data%comm, error, 0) ! this is necessary since non-root may never enter an mpi collective if root has exited here
+    call comms_sync_error(common_data%comm, error, 0) ! this is necessary since non-root may never enter an mpi collective if root has exited here
   endif
   if (allocated(error)) then ! applies (is t) for all ranks now
     call prterr(error, ierr, stdout, stderr, common_data%comm)

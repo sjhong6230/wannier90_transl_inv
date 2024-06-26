@@ -76,46 +76,72 @@ module w90_library
   ! datatype encapsulating types used by wannier90
   type lib_common_type
     character(len=128) :: seedname
+    !! base name for reading/writing of files
 
-    !! matrices
+    ! matrices
     complex(kind=dp), allocatable :: ham_k(:, :, :)
+    !! KS Hamiltonian, takes size (number of WF, number of WF, number of k-points)
     complex(kind=dp), allocatable :: ham_r(:, :, :)
+    !! RS Hamiltonian, takes size (number of WF, number of WF, number of RS-points)
     complex(kind=dp), pointer :: a_matrix(:, :, :) => null()
+    !! pointer to matrix "a" (projections), dimensioned (number of bands, number WF, number of k-points)
     complex(kind=dp), pointer :: m_matrix_local(:, :, :, :) => null()
+    !! pointer to rank local part of "m", dimensioned (number of bands, number of bands, FD neighbours, number of k-points on this rank)
     complex(kind=dp), pointer :: m_matrix(:, :, :, :) => null()
+    !! pointer to matrix "m" (overlaps), dimensioned (number of bands, number of bands, FD neighbours, number of k-points)
     complex(kind=dp), pointer :: u_matrix(:, :, :) => null()
+    !! pointer to matrix "u", dimensionsed (number of WF, number of WF, number of k-points)
     complex(kind=dp), pointer :: u_opt(:, :, :) => null()
+    !! pointer to matrix "u_opt", dimensioned (number of bands, number of WF, number of k-points)
     real(kind=dp), pointer :: eigval(:, :) => null()
+    !! pointer to eigenvalue array dimensioned (number of bands, number of k-points)
 
-    integer, allocatable :: dist_kpoints(:) ! dist_kpoints(i) = rank operating on k-point i
+    integer, allocatable :: dist_kpoints(:)
+    !! distribution of k-points; dist_kpoints(i) = rank operating on k-point i
     integer, allocatable :: exclude_bands(:)
-
+    !! index of bands to exclude from the calculation: passed to DFT code to define space for overlaps, projections, etc
     integer, allocatable :: irvec(:, :)
     integer, allocatable :: ndegen(:)
     integer, allocatable :: shift_vec(:, :)
 
     integer :: mp_grid(3)
+    !! Dimensions of the Monkhorst-Pack grid
     integer :: nrpts
+    !! Dimensions of the RS grid
     integer :: num_bands
+    !! Number of bands (greater or equal to number of WFs)
     integer :: num_kpts
+    !! Total number of k-points
     integer :: num_proj = 0
+    !! Number of projectors defined
     integer :: num_wann
+    !! Number of WFs
     integer :: optimisation = 3
+    !! Algorithm control (affects memory use/speed)
     integer :: rpt_origin
 
-    logical :: calc_only_A = .false. ! used only in kmesh
+    logical :: calc_only_A = .false.
     logical :: gamma_only = .false.
+    !! Select gamma_only branch of some algorithms
     logical :: have_disentangled = .false.
+    !! Flag that disentanglment has been performed
     logical :: lhasproj = .false.
+    !! Flag that projectors are defined
     logical :: lsitesymmetry = .false.
+    !! Flag that symmetry-adapted WFs are to be calculated
     logical :: use_bloch_phases = .false.
+    !! Flag to bypass disentanglement
     logical :: setup_complete = .false.
+    !! Internal flag to indicate completion of setup
 
     real(kind=dp), allocatable :: fermi_energy_list(:)
+    !! Array of energies around the Fermi energy
     real(kind=dp), allocatable :: kpt_latt(:, :)
+    !! Tabulation of k-points in crystal coordinates
     real(kind=dp), allocatable :: wannier_centres_translated(:, :)
     real(kind=dp) :: real_lattice(3, 3)
 
+    ! See types.F90 and wannier90_types.F90 for the use and composition of the different types
     type(atom_data_type) :: atom_data
     type(band_plot_type) :: band_plot
     type(dis_control_type) :: dis_control
@@ -131,8 +157,9 @@ module w90_library
     type(proj_type), allocatable :: proj(:), proj_input(:)
     type(real_space_ham_type) :: real_space_ham
     type(select_projection_type) :: select_proj
-    type(settings_type) :: settings !! container for input file (.win) data and options set via library interface
-    type(sitesym_type) :: sitesym ! symmetry-adapted Wannier functions
+    type(settings_type) :: settings
+    !! container for input file (.win) data and options set via library interface
+    type(sitesym_type) :: sitesym
     type(timer_list_type) :: timer
     type(transport_type) :: tran
     type(w90_calculation_type) :: w90_calculation
@@ -147,33 +174,59 @@ module w90_library
     type(ws_region_type) :: ws_region
     type(wvfn_read_type) :: wvfn_read
   end type lib_common_type
+  !! container type for all variables used by the Wannier90 library
 
-  !private :: w90_create_kmesh ! trigers the generation of k-mesh info (as do get_nn*)
   public :: input_print_details
-  public :: w90_create_kmesh ! trigers the generation of k-mesh info (as do get_nn*)
-  public :: w90_disentangle ! perform disentanglement
-  public :: w90_get_centres ! get wannier centers
+  !! prints a wide variety of simulation parameters to stdout
+  public :: w90_create_kmesh
+  ! trigers the generation of k-mesh info (as do get_nn*)
+  ! this is called by get_nnkp and get_gkpb
+  public :: w90_disentangle
+  !! perform disentanglement
+  public :: w90_get_centres
+  !! get wannier centers
   public :: w90_get_fortran_file
+  !! open a file and get the corresponding unit number
   public :: w90_get_fortran_stderr
+  !! get a fortran unit number corresponding to standard error
   public :: w90_get_fortran_stdout
-  public :: w90_get_proj ! get projection info
-  public :: w90_get_spreads ! get spreads
-  public :: w90_get_nnkp ! get k' indexes
-  public :: w90_get_nn ! get number of b-vectors
-  public :: w90_get_gkpb ! get g offsets of k'
-  public :: w90_input_reader ! extra variables from .win
-  public :: w90_input_setopt ! set options specified by set_option
-  public :: w90_plot ! plot functions
-  public :: w90_project_overlap ! transform overlaps and initial projections
-  public :: w90_set_comm ! setup MPI communicator in parallel case
-  public :: w90_set_constant_bohr_to_ang ! set value of angstrom
-  public :: w90_set_eigval ! set (pointer to) eigenvalues
-  public :: w90_set_m_local ! set (pointer to) m (decomposed)
-  public :: w90_set_option ! set options
-  public :: w90_set_u_matrix ! u matrix (nw,nw)
-  public :: w90_set_u_opt ! u (nb,nb)
-  public :: w90_transport ! transport functions
-  public :: w90_wannierise ! perform wannierisation
+  !! get a fortran unit number corresponding to standard output
+  public :: w90_get_proj
+  !! get projection info (after interpreting projector specification strings)
+  public :: w90_get_spreads
+  !! get spreads
+  public :: w90_get_nnkp
+  !! get k' indexes for finite-difference scheme
+  public :: w90_get_nn
+  !! get number of b-vectors (finite-difference points)
+  public :: w90_get_gkpb
+  !! get g offsets of k'
+  public :: w90_input_reader
+  !! optionally read additional input variables from .win file
+  public :: w90_input_setopt
+  !! act upon (interpret & setup) options specified by set_option interface
+  public :: w90_plot
+  !! performs plot functions
+  public :: w90_project_overlap
+  !! transform overlaps and initial projections
+  public :: w90_set_comm
+  !! setup MPI communicator in parallel case
+  public :: w90_set_constant_bohr_to_ang
+  !! set value of Bohr/Angstrom conversion
+  public :: w90_set_eigval
+  !! set (pointer to) eigenvalues
+  public :: w90_set_m_local
+  !! set (pointer to) m (potentially MPI decomposed by k-points)
+  public :: w90_set_option
+  !! specify options to the library; set_option is overloaded to accept arguments of various types
+  public :: w90_set_u_matrix
+  !! set (pointer to)  u matrix (nw,nw)
+  public :: w90_set_u_opt
+  !! set (pointer to) optimised (disentangled) u matrix (nb,nb)
+  public :: w90_transport
+  !! perform transport functions
+  public :: w90_wannierise
+  !! perform wannierisation
 
   interface w90_set_option
     module procedure w90_set_option_logical
@@ -191,6 +244,7 @@ module w90_library
 contains
 
   subroutine w90_get_fortran_stdout(istdout)
+    !! fortran unit number for stdout
     use iso_fortran_env, only: output_unit
     implicit none
     integer, intent(out) :: istdout
@@ -198,6 +252,7 @@ contains
   end subroutine w90_get_fortran_stdout
 
   subroutine w90_get_fortran_stderr(istdout)
+    !! fortran unit number for stderr
     use iso_fortran_env, only: error_unit
     implicit none
     integer, intent(out) :: istdout
@@ -205,6 +260,7 @@ contains
   end subroutine w90_get_fortran_stderr
 
   subroutine w90_get_fortran_file(output, name)
+    !! open a (formatted) file and return the corresponding fortran unit number
     implicit none
     integer, intent(out) :: output
     character(len=*), intent(in) :: name
@@ -212,14 +268,22 @@ contains
   end subroutine w90_get_fortran_file
 
   subroutine w90_input_setopt(common_data, seedname, istdout, istderr, ierr)
+    !! mechanism to act upon options supplied to the library
+    !! input is parsed and interpreted (any errors are identified) and
+    !! the library data structure (variable common_data) is populated ready for use
+
+    ! w90_input_setopt() processes options stored in common_data%settings
+    ! w90_input_reader() processes options stored in common_data%in_data (from .win file, should be empty here)
+
 #ifdef MPI08
     use mpi_f08
 #endif
 #ifdef MPI90
     use mpi
 #endif
+
     use w90_error_base, only: w90_error_type
-    use w90_error, only: set_error_alloc, set_error_dealloc, set_error_fatal, code_mpi
+    use w90_error, only: set_error_alloc, set_error_fatal, code_mpi
     use w90_comms, only: w90_comm_type, valid_communicator
     use w90_kmesh, only: kmesh_get
     use w90_wannier90_readwrite, only: w90_wannier90_readwrite_read, &
@@ -232,28 +296,28 @@ contains
     integer, intent(in) :: istdout, istderr
     integer, intent(out) :: ierr
     type(lib_common_type), intent(inout) :: common_data
+    !! instance of library data object, modified here
 
     ! local variables
     type(w90_error_type), allocatable :: error
-    logical :: cp_pp, disentanglement
+    logical :: cp_pp
 
     ierr = 0
 
-    if (.not. valid_communicator(common_data%comm)) then
+    if (.not. valid_communicator(common_data%comm)) then ! always true of MPI not defined (see comms.F90)
       ! this is a problem: how do we exit using the parallel error handler when the communicator is unknown?
-      write (istderr, *) ' Parallel Wannier90 library invoked with invalid communicator, exiting.  Use w90_set_comm()!'
+      write (istderr, *) ' Error: parallel Wannier90 library invoked with invalid communicator, exiting.  Use w90_set_comm()!'
       ierr = code_mpi
       return
     endif
 
-    ! input_setopt() processes options stored in a container, common_data%settings
-    ! meanwhile the .win file contents are stored in common_data%in_data, which should be empty here
     if (allocated(common_data%settings%in_data)) then
-      call set_error_fatal(error, ' readinput and setopt clash at input_setopt call', common_data%comm)
+      call set_error_fatal(error, &
+                           ' Error: w90_read_input() and w90_set_option() clash at w90_input_setopt() call', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     else if (.not. allocated(common_data%settings%entries)) then
-      call set_error_fatal(error, ' input_setopt called with no input', common_data%comm)
+      call set_error_fatal(error, ' Error: w90_input_setopt() called with no input set', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
       !else if (.not. allocated(common_data%dist_kpoints)) then
@@ -264,6 +328,8 @@ contains
 
     common_data%seedname = seedname ! set seedname for input/output files
 
+    ! read_special can only be executed once per library object
+    ! it sets key variables (eg, number of k-points sizing allocations, etc)
     call w90_wannier90_readwrite_read_special(common_data%settings, common_data%atom_data, &
                                               common_data%kmesh_input, common_data%kmesh_info, &
                                               common_data%kpt_latt, common_data%wann_control, &
@@ -284,24 +350,23 @@ contains
       return
     endif
 
-    disentanglement = (common_data%num_bands > common_data%num_wann)
-
-    if (disentanglement) then
+    ! condition for disentanglement is number of bands > number of WF
+    if (common_data%num_bands > common_data%num_wann) then
       allocate (common_data%dis_manifold%ndimwin(common_data%num_kpts), stat=ierr)
       if (ierr /= 0) then
-        call set_error_alloc(error, 'Error allocating ndimwin in input_setopt() library call', common_data%comm)
+        call set_error_alloc(error, 'Error allocating ndimwin in w90_input_setopt() library call', common_data%comm)
         call prterr(error, ierr, istdout, istderr, common_data%comm)
         return
       endif
       allocate (common_data%dis_manifold%nfirstwin(common_data%num_kpts), stat=ierr)
       if (ierr /= 0) then
-        call set_error_alloc(error, 'Error allocating nfirstwin in input_setopt() library call', common_data%comm)
+        call set_error_alloc(error, 'Error allocating nfirstwin in w90_input_setopt() library call', common_data%comm)
         call prterr(error, ierr, istdout, istderr, common_data%comm)
         return
       endif
       allocate (common_data%dis_manifold%lwindow(common_data%num_bands, common_data%num_kpts), stat=ierr)
       if (ierr /= 0) then
-        call set_error_alloc(error, 'Error allocating lwindow in input_setopt() library call', common_data%comm)
+        call set_error_alloc(error, 'Error allocating lwindow in w90_input_setopt() library call', common_data%comm)
         call prterr(error, ierr, istdout, istderr, common_data%comm)
         return
       endif
@@ -309,7 +374,7 @@ contains
 
     allocate (common_data%wannier_data%centres(3, common_data%num_wann), stat=ierr)
     if (ierr /= 0) then
-      call set_error_alloc(error, 'Error allocating wannier_centres in input_setopt() library call', common_data%comm)
+      call set_error_alloc(error, 'Error allocating wannier_centres in w90_input_setopt() library call', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     endif
@@ -317,17 +382,16 @@ contains
 
     allocate (common_data%wannier_data%spreads(common_data%num_wann), stat=ierr)
     if (ierr /= 0) then
-      call set_error_alloc(error, 'Error in allocating wannier_spreads in input_setopt() library call', common_data%comm)
+      call set_error_alloc(error, 'Error in allocating wannier_spreads in w90_input_setopt() library call', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     endif
     common_data%wannier_data%spreads = 0.0_dp
 
-    ! read all other variables
+    ! read all other variables; mostly simple variables can be set and/or reset
     call w90_wannier90_readwrite_read(common_data%settings, common_data%band_plot, &
                                       common_data%dis_control, common_data%dis_spheres, &
-                                      common_data%dis_manifold, &
-                                      common_data%fermi_energy_list, &
+                                      common_data%dis_manifold, common_data%fermi_energy_list, &
                                       common_data%fermi_surface_data, common_data%output_file, &
                                       common_data%wvfn_read, common_data%wann_control, &
                                       common_data%real_space_ham, common_data%kpoint_path, &
@@ -349,13 +413,20 @@ contains
     ! clear settings container (from settings interface not .win file)
     deallocate (common_data%settings%entries, stat=ierr)
     if (ierr /= 0) then
-      call set_error_alloc(error, 'Error in deallocating entries data in input_setopt() library call', common_data%comm)
+      call set_error_alloc(error, 'Error in deallocating entries data in w90_input_setopt() library call', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     endif
   end subroutine w90_input_setopt
 
   subroutine w90_input_reader(common_data, istdout, istderr, ierr)
+    !! mechanism to act upon tokens read from the input ".win" file
+    !! input is parsed and interpreted (any errors are identified) and
+    !! the library data structure (variable common_data), already setup by w90_input_setopt, is modified
+
+    ! w90_input_setopt() processes options stored in common_data%settings (must be empty here; emptied by w90_input_setopt call)
+    ! w90_input_reader() processes options stored in common_data%in_data (from .win file)
+
     use w90_comms, only: valid_communicator
     use w90_error_base, only: w90_error_type
     use w90_error, only: set_error_input, set_error_fatal, set_error_alloc, code_mpi
@@ -377,7 +448,7 @@ contains
 
     if (.not. valid_communicator(common_data%comm)) then
       ! this is a problem: how do we exit using the parallel error handler when the communicator is unknown?
-      write (istderr, *) ' Parallel Wannier90 library invoked with invalid communicator, exiting.  Use w90_set_comm()!'
+      write (istderr, *) ' Error: parallel Wannier90 library invoked with invalid communicator, exiting.  Use w90_set_comm()!'
       ierr = code_mpi
       return
     endif
@@ -400,8 +471,7 @@ contains
     ! set options corresponding to string array from .win file
     call w90_wannier90_readwrite_read(common_data%settings, common_data%band_plot, &
                                       common_data%dis_control, common_data%dis_spheres, &
-                                      common_data%dis_manifold, &
-                                      common_data%fermi_energy_list, &
+                                      common_data%dis_manifold, common_data%fermi_energy_list, &
                                       common_data%fermi_surface_data, common_data%output_file, &
                                       common_data%wvfn_read, common_data%wann_control, &
                                       common_data%real_space_ham, common_data%kpoint_path, &
@@ -427,10 +497,14 @@ contains
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     endif
+
     if (allocated(common_data%settings%in_data)) deallocate (common_data%settings%in_data)
   end subroutine w90_input_reader
 
   subroutine w90_disentangle(common_data, istdout, istderr, ierr)
+    !! perform disentanglement; assumes library data object is already setup after w90_input_setopt() call
+    !! no effect if number of bands == number of WF
+
     use w90_disentangle_mod, only: dis_main, setup_m_loc
     use w90_error_base, only: w90_error_type
     use w90_error, only: set_error_fatal
@@ -450,19 +524,19 @@ contains
 
     ! m_matrix_orig_local (nband*nwann for disentangle)
     if (.not. associated(common_data%m_matrix_local)) then ! (nband*nwann*nknode for wannierise)
-      call set_error_fatal(error, 'm_matrix_local not associated for disentangle call', common_data%comm)
+      call set_error_fatal(error, 'Error: m_matrix_local not associated for w90_disentangle() call', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     else if (.not. associated(common_data%u_matrix)) then
-      call set_error_fatal(error, 'u_matrix not associated for disentangle call', common_data%comm)
+      call set_error_fatal(error, 'Error: u_matrix not associated for w90_disentangle() call', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     else if (.not. associated(common_data%u_opt)) then
-      call set_error_fatal(error, 'u_opt not associated for disentangle call', common_data%comm)
+      call set_error_fatal(error, 'Error: u_opt not associated for w90_disentangle() call', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     else if (.not. associated(common_data%eigval)) then
-      call set_error_fatal(error, 'eigval not associated for disentangle call', common_data%comm)
+      call set_error_fatal(error, 'Error: eigval not associated for w90_disentangle() call', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     endif
@@ -483,6 +557,7 @@ contains
       !  count(common_data%dis_manifold%lwindow)
     endif
 
+    ! condition for disentanglement is number of bands > number of WF
     if (common_data%num_bands > common_data%num_wann) then
       call dis_main(common_data%dis_control, common_data%dis_spheres, common_data%dis_manifold, &
                     common_data%kmesh_info, common_data%kpt_latt, common_data%sitesym, &
@@ -543,18 +618,19 @@ contains
 
     if (.not. common_data%have_disentangled) then
       if (common_data%num_wann /= common_data%num_bands) then
-        call set_error_fatal(error, 'w90_project_overlap: num_bands \= num_wann but disentanglement() has not called', &
+        call set_error_fatal(error, 'Error: w90_project_overlap(): num_bands /= num_wann but disentanglement() was not called', &
                              common_data%comm)
         call prterr(error, ierr, istdout, istderr, common_data%comm)
         return
       endif
 
+      ! fixme, document!
       common_data%u_matrix(:, :, :) = common_data%u_opt(:, :, :) ! u_opt contains initial projections
       common_data%u_opt(:, :, :) = 0.d0
       do ik = 1, common_data%num_kpts
-      do iw = 1, common_data%num_wann
-        common_data%u_opt(iw, iw, ik) = 1.d0
-      enddo
+        do iw = 1, common_data%num_wann
+          common_data%u_opt(iw, iw, ik) = 1.d0
+        enddo
       enddo
 
       if (common_data%gamma_only) then
@@ -578,7 +654,9 @@ contains
   end subroutine w90_project_overlap
 
   subroutine w90_wannierise(common_data, istdout, istderr, ierr)
-    use w90_comms, only: mpirank, comms_barrier
+    ! perform MLWF algorithm
+
+    use w90_comms, only: mpirank, comms_sync_error
     use w90_error_base, only: w90_error_type
     use w90_error, only: set_error_fatal
     use w90_wannierise_mod, only: wann_main, wann_main_gamma
@@ -596,9 +674,9 @@ contains
     ierr = 0
 
     if (.not. associated(common_data%m_matrix_local)) then
-      call set_error_fatal(error, 'm_matrix_local not set for wannierise', common_data%comm)
+      call set_error_fatal(error, 'Error: m_matrix_local not set for call to w90_wannierise()', common_data%comm)
     else if (.not. associated(common_data%u_matrix)) then
-      call set_error_fatal(error, 'u_matrix not set for wannierise', common_data%comm)
+      call set_error_fatal(error, 'Error: u_matrix not set for w90_wannierise()', common_data%comm)
     endif
     if (allocated(error)) then
       call prterr(error, ierr, istdout, istderr, common_data%comm)
@@ -607,18 +685,17 @@ contains
 
     if (common_data%gamma_only) then
       if (mpirank(common_data%comm) == 0) then
-        call wann_main_gamma(common_data%kmesh_info, common_data%wann_control, &
-                             common_data%omega, common_data%print_output, &
-                             common_data%wannier_data, common_data%m_matrix_local, &
-                             common_data%u_matrix, common_data%real_lattice, common_data%num_kpts, &
-                             common_data%num_wann, istdout, common_data%timer, error, &
-                             common_data%comm)
+        call wann_main_gamma(common_data%kmesh_info, common_data%wann_control, common_data%omega, &
+                             common_data%print_output, common_data%wannier_data, &
+                             common_data%m_matrix_local, common_data%u_matrix, &
+                             common_data%real_lattice, common_data%num_kpts, common_data%num_wann, &
+                             istdout, common_data%timer, error, common_data%comm)
         if (allocated(error)) then
           call prterr(error, ierr, istdout, istderr, common_data%comm)
           return
         endif
       endif
-      call comms_barrier(error, common_data%comm)
+      call comms_sync_error(common_data%comm, error, 0) ! this is necessary after root's excursion alone
       if (allocated(error)) then
         call prterr(error, ierr, istdout, istderr, common_data%comm)
         return
@@ -632,9 +709,8 @@ contains
                      common_data%wannier_centres_translated, common_data%irvec, &
                      common_data%mp_grid, common_data%ndegen, common_data%nrpts, &
                      common_data%num_kpts, common_data%num_proj, common_data%num_wann, &
-                     common_data%optimisation, common_data%rpt_origin, &
-                     common_data%band_plot%mode, common_data%tran%mode, &
-                     common_data%lsitesymmetry, istdout, common_data%timer, &
+                     common_data%optimisation, common_data%rpt_origin, common_data%band_plot%mode, &
+                     common_data%tran%mode, common_data%lsitesymmetry, istdout, common_data%timer, &
                      common_data%dist_kpoints, error, common_data%comm)
     endif
     if (allocated(error)) then
@@ -644,6 +720,8 @@ contains
   end subroutine w90_wannierise
 
   subroutine w90_plot(common_data, istdout, istderr, ierr)
+    !! performs a variety of plotting functions
+
     use w90_error_base, only: w90_error_type
     use w90_plot_mod, only: plot_main
 
@@ -683,7 +761,9 @@ contains
   end subroutine w90_plot
 
   subroutine w90_transport(common_data, istdout, istderr, ierr)
-    use w90_comms, only: mpirank
+    !! performs a variety of transport calculations
+
+    use w90_comms, only: mpirank, comms_sync_error
     use w90_error_base, only: w90_error_type
     use w90_transport_mod, only: tran_main
 
@@ -702,23 +782,25 @@ contains
     ! fixme(jj) what are our preconditions?
 
     ! currently tran_main is entirely serial
-    ! test throwing an error!
     if (mpirank(common_data%comm) == 0) then
-      call tran_main(common_data%atom_data, common_data%dis_manifold, common_data%fermi_energy_list, &
-                     common_data%ham_logical, common_data%kpt_latt, common_data%output_file, &
-                     common_data%real_space_ham, common_data%tran, common_data%print_output, &
-                     common_data%wannier_data, common_data%ws_region, common_data%w90_calculation, &
-                     common_data%ham_k, common_data%ham_r, common_data%u_matrix, common_data%u_opt, &
-                     common_data%eigval, common_data%real_lattice, common_data%wannier_centres_translated, &
-                     common_data%irvec, common_data%mp_grid, common_data%ndegen, common_data%shift_vec, &
-                     common_data%nrpts, common_data%num_bands, common_data%num_kpts, common_data%num_wann, &
-                     common_data%rpt_origin, common_data%band_plot%mode, common_data%have_disentangled, &
-                     common_data%lsitesymmetry, common_data%seedname, istdout, common_data%timer, error, &
-                     common_data%comm)
-      if (allocated(error)) then
-        call prterr(error, ierr, istdout, istderr, common_data%comm)
-        return
-      endif
+      call tran_main(common_data%atom_data, common_data%dis_manifold, &
+                     common_data%fermi_energy_list, common_data%ham_logical, common_data%kpt_latt, &
+                     common_data%output_file, common_data%real_space_ham, common_data%tran, &
+                     common_data%print_output, common_data%wannier_data, common_data%ws_region, &
+                     common_data%w90_calculation, common_data%ham_k, common_data%ham_r, &
+                     common_data%u_matrix, common_data%u_opt, common_data%eigval, &
+                     common_data%real_lattice, common_data%wannier_centres_translated, &
+                     common_data%irvec, common_data%mp_grid, common_data%ndegen, &
+                     common_data%shift_vec, common_data%nrpts, common_data%num_bands, &
+                     common_data%num_kpts, common_data%num_wann, common_data%rpt_origin, &
+                     common_data%band_plot%mode, common_data%have_disentangled, &
+                     common_data%lsitesymmetry, common_data%seedname, istdout, common_data%timer, &
+                     error, common_data%comm)
+    endif
+    call comms_sync_error(common_data%comm, error, 0) ! this is necessary after root's excursion alone
+    if (allocated(error)) then
+      call prterr(error, ierr, istdout, istderr, common_data%comm)
+      return
     endif
   end subroutine w90_transport
 
@@ -769,167 +851,6 @@ contains
     common_data%physics%bohr_version_str = "-> Using Bohr value from linked main code"
   end subroutine w90_set_constant_bohr_to_ang
 
-  subroutine w90_set_option_text(common_data, keyword, text)
-    use w90_readwrite, only: init_settings, expand_settings
-
-    implicit none
-
-    character(*), intent(in) :: keyword, text
-    type(lib_common_type), intent(inout) :: common_data
-    integer :: i
-
-    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
-    i = common_data%settings%num_entries + 1
-    common_data%settings%entries(i)%keyword = keyword
-    common_data%settings%entries(i)%txtdata = text
-    common_data%settings%num_entries = i + 1
-    if (common_data%settings%num_entries == common_data%settings%num_entries_max) call expand_settings(common_data%settings)
-  endsubroutine w90_set_option_text
-
-  subroutine w90_set_option_logical(common_data, keyword, bool)
-    use w90_readwrite, only: init_settings, expand_settings
-
-    implicit none
-
-    character(*), intent(in) :: keyword
-    logical, intent(in) :: bool
-    type(lib_common_type), intent(inout) :: common_data
-    integer :: i
-
-    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
-    i = common_data%settings%num_entries + 1
-    common_data%settings%entries(i)%keyword = keyword
-    common_data%settings%entries(i)%ldata = bool
-    common_data%settings%num_entries = i + 1
-    if (common_data%settings%num_entries == common_data%settings%num_entries_max) call expand_settings(common_data%settings)
-  endsubroutine w90_set_option_logical
-
-  subroutine w90_set_option_i1d(common_data, keyword, arr)
-    use w90_readwrite, only: init_settings, expand_settings
-
-    implicit none
-
-    character(*), intent(in) :: keyword
-    integer, intent(in) :: arr(:)
-    type(lib_common_type), intent(inout) :: common_data
-    integer :: i
-
-    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
-    i = common_data%settings%num_entries + 1
-    common_data%settings%entries(i)%keyword = keyword
-    common_data%settings%entries(i)%i1d = arr ! this causes an automatic allocation
-    common_data%settings%num_entries = i + 1
-    if (common_data%settings%num_entries == common_data%settings%num_entries_max) call expand_settings(common_data%settings)
-  endsubroutine w90_set_option_i1d
-
-  subroutine w90_set_option_i2d(common_data, keyword, arr)
-    use w90_readwrite, only: init_settings, expand_settings
-
-    implicit none
-
-    character(*), intent(in) :: keyword
-    integer, intent(in) :: arr(:, :)
-    type(lib_common_type), intent(inout) :: common_data
-    integer :: i
-
-    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
-    i = common_data%settings%num_entries + 1
-    common_data%settings%entries(i)%keyword = keyword
-    common_data%settings%entries(i)%i2d = arr
-    common_data%settings%num_entries = i + 1
-    if (common_data%settings%num_entries == common_data%settings%num_entries_max) call expand_settings(common_data%settings)
-  endsubroutine w90_set_option_i2d
-
-  subroutine w90_set_option_int(common_data, keyword, ival)
-    use w90_readwrite, only: init_settings, expand_settings
-
-    implicit none
-
-    character(*), intent(in) :: keyword
-    integer, intent(in) :: ival
-    type(lib_common_type), intent(inout) :: common_data
-    integer :: i
-
-    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
-    i = common_data%settings%num_entries + 1
-    common_data%settings%entries(i)%keyword = keyword
-    common_data%settings%entries(i)%idata = ival
-    common_data%settings%num_entries = i + 1
-    if (common_data%settings%num_entries == common_data%settings%num_entries_max) call expand_settings(common_data%settings)
-  endsubroutine w90_set_option_int
-
-  subroutine w90_set_option_r1d(common_data, keyword, arr)
-    use w90_readwrite, only: init_settings, expand_settings
-
-    implicit none
-
-    character(*), intent(in) :: keyword
-    real(kind=dp), intent(in) :: arr(:)
-    type(lib_common_type), intent(inout) :: common_data
-    integer :: i
-
-    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
-    i = common_data%settings%num_entries + 1
-    common_data%settings%entries(i)%keyword = keyword
-    common_data%settings%entries(i)%r1d = arr
-    common_data%settings%num_entries = i + 1
-    if (common_data%settings%num_entries == common_data%settings%num_entries_max) call expand_settings(common_data%settings)
-  endsubroutine w90_set_option_r1d
-
-  subroutine w90_set_option_r2d(common_data, keyword, arr)
-    use w90_readwrite, only: init_settings, expand_settings
-
-    implicit none
-
-    character(*), intent(in) :: keyword
-    real(kind=dp), intent(in) :: arr(:, :)
-    type(lib_common_type), intent(inout) :: common_data
-    integer :: i
-
-    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
-    i = common_data%settings%num_entries + 1
-    common_data%settings%entries(i)%keyword = keyword
-    common_data%settings%entries(i)%r2d = arr
-    common_data%settings%num_entries = i + 1
-    if (common_data%settings%num_entries == common_data%settings%num_entries_max) call expand_settings(common_data%settings)
-  endsubroutine w90_set_option_r2d
-
-  subroutine w90_set_option_c2d(common_data, keyword, arr)
-    use w90_readwrite, only: init_settings, expand_settings
-
-    implicit none
-
-    character(*), intent(in) :: keyword
-    character(len=*), intent(in) :: arr(:)
-    type(lib_common_type), intent(inout) :: common_data
-    integer :: i
-
-    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
-    i = common_data%settings%num_entries + 1
-    common_data%settings%entries(i)%keyword = keyword
-    common_data%settings%entries(i)%c2d = arr
-    common_data%settings%num_entries = i + 1
-    if (common_data%settings%num_entries == common_data%settings%num_entries_max) call expand_settings(common_data%settings)
-  endsubroutine w90_set_option_c2d
-
-  subroutine w90_set_option_real(common_data, keyword, rval)
-    use w90_readwrite, only: init_settings, expand_settings
-
-    implicit none
-
-    character(*), intent(in) :: keyword
-    real(kind=dp), intent(in) :: rval
-    type(lib_common_type), intent(inout) :: common_data
-    integer :: i
-
-    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
-    i = common_data%settings%num_entries + 1
-    common_data%settings%entries(i)%keyword = keyword
-    common_data%settings%entries(i)%rdata = rval
-    common_data%settings%num_entries = i + 1
-    if (common_data%settings%num_entries == common_data%settings%num_entries_max) call expand_settings(common_data%settings)
-  endsubroutine w90_set_option_real
-
   subroutine w90_create_kmesh(common_data, istdout, istderr, ierr)
     !! causes w90 to calculate finite difference neighbour lists
     use w90_error_base, only: w90_error_type
@@ -946,19 +867,24 @@ contains
     type(w90_error_type), allocatable :: error
 
     ierr = 0
+    if (common_data%setup_complete) return
 
     call kmesh_get(common_data%kmesh_input, common_data%kmesh_info, common_data%print_output, &
                    common_data%kpt_latt, common_data%real_lattice, common_data%num_kpts, &
                    common_data%gamma_only, istdout, common_data%timer, error, common_data%comm)
-
-    if (.NOT. common_data%gamma_only) then
-      call kmesh_sort(common_data%kmesh_info, common_data%num_kpts, error, common_data%comm)
-    endif
-
     if (allocated(error)) then
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     endif
+
+    if (.not. common_data%gamma_only) then
+      call kmesh_sort(common_data%kmesh_info, common_data%num_kpts, error, common_data%comm)
+      if (allocated(error)) then
+        call prterr(error, ierr, istdout, istderr, common_data%comm)
+        return
+      endif
+    endif
+
     common_data%setup_complete = .true.
   end subroutine w90_create_kmesh
 
@@ -1073,7 +999,8 @@ contains
     ierr = 0
 
     if (.not. allocated(common_data%proj_input)) then
-      call set_error_fatal(error, 'Projectors are not setup in Wannier90 library when requested via get_proj()', common_data%comm)
+      call set_error_fatal(error, &
+                           'Error: projectors are not setup in Wannier90 library when requested via get_proj()', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     endif
@@ -1082,44 +1009,44 @@ contains
 
     ! check allocation of main output arrays
     if (size(l) < n) then
-      call set_error_fatal(error, 'Array argument l in get_proj() call is insufficiently sized', common_data%comm)
+      call set_error_fatal(error, 'Error: array argument l in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     else if (size(m) < n) then
-      call set_error_fatal(error, 'Array argument m in get_proj() call is insufficiently sized', common_data%comm)
+      call set_error_fatal(error, 'Error: array argument m in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     else if (size(s) < n) then
-      call set_error_fatal(error, 'Array argument s in get_proj() call is insufficiently sized', common_data%comm)
+      call set_error_fatal(error, 'Error: array argument s in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     else if (size(site, 2) < n) then
-      call set_error_fatal(error, 'Array argument site in get_proj() call is insufficiently sized', common_data%comm)
+      call set_error_fatal(error, 'Error: array argument site in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     else if (size(sqa, 2) < n) then
-      call set_error_fatal(error, 'Array argument sqa in get_proj() call is insufficiently sized', common_data%comm)
+      call set_error_fatal(error, 'Error: array argument sqa in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     else if (size(sqa, 2) < n) then
-      call set_error_fatal(error, 'Array argument sqa in get_proj() call is insufficiently sized', common_data%comm)
+      call set_error_fatal(error, 'Error: array argument sqa in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     else if (size(z, 2) < n) then
-      call set_error_fatal(error, 'Array argument z in get_proj() call is insufficiently sized', common_data%comm)
+      call set_error_fatal(error, 'Error: array argument z in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     elseif (size(x, 2) < n) then
-      call set_error_fatal(error, 'Array argument x in get_proj() call is insufficiently sized', common_data%comm)
+      call set_error_fatal(error, 'Error: array argument x in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     else if (size(rad) < n) then
-      call set_error_fatal(error, 'Array argument rad in get_proj() call is insufficiently sized', common_data%comm)
+      call set_error_fatal(error, 'Error: array argument rad in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     endif
     if (size(zona) < n) then
-      call set_error_fatal(error, 'Array argument zona in get_proj() call is insufficiently sized', common_data%comm)
+      call set_error_fatal(error, 'Error: array argument zona in get_proj() call is insufficiently sized', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     endif
@@ -1190,15 +1117,13 @@ contains
                                        common_data%proj_input, common_data%real_space_ham, &
                                        common_data%select_proj, common_data%kpoint_path, &
                                        common_data%tran, common_data%print_output, &
-                                       common_data%wannier_data, &
-                                       common_data%wann_plot, &
+                                       common_data%wannier_data, common_data%wann_plot, &
                                        common_data%w90_calculation, common_data%real_lattice, &
                                        common_data%sitesym%symmetrize_eps, common_data%mp_grid, &
                                        common_data%num_bands, common_data%num_kpts, &
                                        common_data%num_proj, common_data%num_wann, &
-                                       common_data%optimisation, .false., &
-                                       common_data%gamma_only, common_data%lsitesymmetry, &
-                                       common_data%w90_system%spinors, &
+                                       common_data%optimisation, .false., common_data%gamma_only, &
+                                       common_data%lsitesymmetry, common_data%w90_system%spinors, &
                                        common_data%use_bloch_phases, istdout)
 
     if (allocated(error)) then
@@ -1206,4 +1131,183 @@ contains
       return
     endif
   end subroutine input_print_details
+
+  subroutine w90_set_option_text(common_data, keyword, text)
+    use w90_readwrite, only: init_settings, expand_settings
+
+    implicit none
+
+    character(*), intent(in) :: keyword, text
+    type(lib_common_type), intent(inout) :: common_data
+    integer :: i
+
+    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
+    i = common_data%settings%num_entries + 1
+    common_data%settings%entries(i)%keyword = keyword
+    common_data%settings%entries(i)%txtdata = text
+    common_data%settings%num_entries = i + 1
+    if (common_data%settings%num_entries == common_data%settings%num_entries_max) then
+      call expand_settings(common_data%settings)
+    endif
+  endsubroutine w90_set_option_text
+
+  subroutine w90_set_option_logical(common_data, keyword, bool)
+    use w90_readwrite, only: init_settings, expand_settings
+
+    implicit none
+
+    character(*), intent(in) :: keyword
+    logical, intent(in) :: bool
+    type(lib_common_type), intent(inout) :: common_data
+    integer :: i
+
+    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
+    i = common_data%settings%num_entries + 1
+    common_data%settings%entries(i)%keyword = keyword
+    common_data%settings%entries(i)%ldata = bool
+    common_data%settings%num_entries = i + 1
+    if (common_data%settings%num_entries == common_data%settings%num_entries_max) then
+      call expand_settings(common_data%settings)
+    endif
+  endsubroutine w90_set_option_logical
+
+  subroutine w90_set_option_i1d(common_data, keyword, arr)
+    use w90_readwrite, only: init_settings, expand_settings
+
+    implicit none
+
+    character(*), intent(in) :: keyword
+    integer, intent(in) :: arr(:)
+    type(lib_common_type), intent(inout) :: common_data
+    integer :: i
+
+    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
+    i = common_data%settings%num_entries + 1
+    common_data%settings%entries(i)%keyword = keyword
+    common_data%settings%entries(i)%i1d = arr ! this causes an automatic allocation
+    common_data%settings%num_entries = i + 1
+    if (common_data%settings%num_entries == common_data%settings%num_entries_max) then
+      call expand_settings(common_data%settings)
+    endif
+  endsubroutine w90_set_option_i1d
+
+  subroutine w90_set_option_i2d(common_data, keyword, arr)
+    use w90_readwrite, only: init_settings, expand_settings
+
+    implicit none
+
+    character(*), intent(in) :: keyword
+    integer, intent(in) :: arr(:, :)
+    type(lib_common_type), intent(inout) :: common_data
+    integer :: i
+
+    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
+    i = common_data%settings%num_entries + 1
+    common_data%settings%entries(i)%keyword = keyword
+    common_data%settings%entries(i)%i2d = arr
+    common_data%settings%num_entries = i + 1
+    if (common_data%settings%num_entries == common_data%settings%num_entries_max) then
+      call expand_settings(common_data%settings)
+    endif
+  endsubroutine w90_set_option_i2d
+
+  subroutine w90_set_option_int(common_data, keyword, ival)
+    use w90_readwrite, only: init_settings, expand_settings
+
+    implicit none
+
+    character(*), intent(in) :: keyword
+    integer, intent(in) :: ival
+    type(lib_common_type), intent(inout) :: common_data
+    integer :: i
+
+    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
+    i = common_data%settings%num_entries + 1
+    common_data%settings%entries(i)%keyword = keyword
+    common_data%settings%entries(i)%idata = ival
+    common_data%settings%num_entries = i + 1
+    if (common_data%settings%num_entries == common_data%settings%num_entries_max) then
+      call expand_settings(common_data%settings)
+    endif
+  endsubroutine w90_set_option_int
+
+  subroutine w90_set_option_r1d(common_data, keyword, arr)
+    use w90_readwrite, only: init_settings, expand_settings
+
+    implicit none
+
+    character(*), intent(in) :: keyword
+    real(kind=dp), intent(in) :: arr(:)
+    type(lib_common_type), intent(inout) :: common_data
+    integer :: i
+
+    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
+    i = common_data%settings%num_entries + 1
+    common_data%settings%entries(i)%keyword = keyword
+    common_data%settings%entries(i)%r1d = arr
+    common_data%settings%num_entries = i + 1
+    if (common_data%settings%num_entries == common_data%settings%num_entries_max) then
+      call expand_settings(common_data%settings)
+    endif
+  endsubroutine w90_set_option_r1d
+
+  subroutine w90_set_option_r2d(common_data, keyword, arr)
+    use w90_readwrite, only: init_settings, expand_settings
+
+    implicit none
+
+    character(*), intent(in) :: keyword
+    real(kind=dp), intent(in) :: arr(:, :)
+    type(lib_common_type), intent(inout) :: common_data
+    integer :: i
+
+    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
+    i = common_data%settings%num_entries + 1
+    common_data%settings%entries(i)%keyword = keyword
+    common_data%settings%entries(i)%r2d = arr
+    common_data%settings%num_entries = i + 1
+    if (common_data%settings%num_entries == common_data%settings%num_entries_max) then
+      call expand_settings(common_data%settings)
+    endif
+  endsubroutine w90_set_option_r2d
+
+  subroutine w90_set_option_c2d(common_data, keyword, arr)
+    use w90_readwrite, only: init_settings, expand_settings
+
+    implicit none
+
+    character(*), intent(in) :: keyword
+    character(len=*), intent(in) :: arr(:)
+    type(lib_common_type), intent(inout) :: common_data
+    integer :: i
+
+    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
+    i = common_data%settings%num_entries + 1
+    common_data%settings%entries(i)%keyword = keyword
+    common_data%settings%entries(i)%c2d = arr
+    common_data%settings%num_entries = i + 1
+    if (common_data%settings%num_entries == common_data%settings%num_entries_max) then
+      call expand_settings(common_data%settings)
+    endif
+  endsubroutine w90_set_option_c2d
+
+  subroutine w90_set_option_real(common_data, keyword, rval)
+    use w90_readwrite, only: init_settings, expand_settings
+
+    implicit none
+
+    character(*), intent(in) :: keyword
+    real(kind=dp), intent(in) :: rval
+    type(lib_common_type), intent(inout) :: common_data
+    integer :: i
+
+    if (.not. allocated(common_data%settings%entries)) call init_settings(common_data%settings)
+    i = common_data%settings%num_entries + 1
+    common_data%settings%entries(i)%keyword = keyword
+    common_data%settings%entries(i)%rdata = rval
+    common_data%settings%num_entries = i + 1
+    if (common_data%settings%num_entries == common_data%settings%num_entries_max) then
+      call expand_settings(common_data%settings)
+    endif
+  endsubroutine w90_set_option_real
 end module w90_library
