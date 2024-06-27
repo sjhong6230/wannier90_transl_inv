@@ -87,12 +87,10 @@ module w90_library
     !! pointer to matrix "a" (projections), dimensioned (number of bands, number WF, number of k-points)
     complex(kind=dp), pointer :: m_matrix_local(:, :, :, :) => null()
     !! pointer to rank local part of "m", dimensioned (number of bands, number of bands, FD neighbours, number of k-points on this rank)
-    complex(kind=dp), pointer :: m_matrix(:, :, :, :) => null()
-    !! pointer to matrix "m" (overlaps), dimensioned (number of bands, number of bands, FD neighbours, number of k-points)
     complex(kind=dp), pointer :: u_matrix(:, :, :) => null()
     !! pointer to matrix "u", dimensionsed (number of WF, number of WF, number of k-points)
-    complex(kind=dp), pointer :: u_opt(:, :, :) => null()
-    !! pointer to matrix "u_opt", dimensioned (number of bands, number of WF, number of k-points)
+    complex(kind=dp), pointer :: u_matrix_opt(:, :, :) => null()
+    !! pointer to matrix "u_matrix_opt", dimensioned (number of bands, number of WF, number of k-points)
     real(kind=dp), pointer :: eigval(:, :) => null()
     !! pointer to eigenvalue array dimensioned (number of bands, number of k-points)
 
@@ -531,8 +529,8 @@ contains
       call set_error_fatal(error, 'Error: u_matrix not associated for w90_disentangle() call', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
-    else if (.not. associated(common_data%u_opt)) then
-      call set_error_fatal(error, 'Error: u_opt not associated for w90_disentangle() call', common_data%comm)
+    else if (.not. associated(common_data%u_matrix_opt)) then
+      call set_error_fatal(error, 'Error: u_matrix_opt not associated for w90_disentangle() call', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     else if (.not. associated(common_data%eigval)) then
@@ -545,16 +543,9 @@ contains
     if (common_data%dis_manifold%win_min == -huge(0.0_dp)) common_data%dis_manifold%win_min = minval(common_data%eigval)
     if (common_data%dis_manifold%win_max == huge(0.0_dp)) common_data%dis_manifold%win_max = maxval(common_data%eigval)
     if (common_data%dis_manifold%frozen_states) then
-      !write(*,*) shape(common_data%eigval)
-      !write(*,*) shape(common_data%dis_manifold%lwindow)
-      if (common_data%dis_manifold%froz_min == -huge(0.0_dp) .and. allocated(common_data%exclude_bands)) then
-        ioff = maxval(common_data%exclude_bands)
-        ioff = 0 !fixme
-        common_data%dis_manifold%froz_min = minval(common_data%eigval(ioff + 1, :))
+      if (common_data%dis_manifold%froz_min == -huge(0.0_dp)) then
+        common_data%dis_manifold%froz_min = minval(common_data%eigval(:, :))
       endif
-      !common_data%dis_manifold%froz_min = minval(common_data%eigval, mask=common_data%dis_manifold%lwindow)
-      !write(*,*)common_data%dis_manifold%froz_min,allocated(common_data%dis_manifold%lwindow),&
-      !  count(common_data%dis_manifold%lwindow)
     endif
 
     ! condition for disentanglement is number of bands > number of WF
@@ -562,7 +553,7 @@ contains
       call dis_main(common_data%dis_control, common_data%dis_spheres, common_data%dis_manifold, &
                     common_data%kmesh_info, common_data%kpt_latt, common_data%sitesym, &
                     common_data%print_output, common_data%m_matrix_local, common_data%u_matrix, &
-                    common_data%u_opt, common_data%eigval, common_data%real_lattice, &
+                    common_data%u_matrix_opt, common_data%eigval, common_data%real_lattice, &
                     common_data%omega%invariant, common_data%num_bands, common_data%num_kpts, &
                     common_data%num_wann, common_data%gamma_only, common_data%lsitesymmetry, &
                     istdout, common_data%timer, common_data%dist_kpoints, error, common_data%comm)
@@ -571,6 +562,7 @@ contains
         return
       endif
 
+      !fixme, aliasing of input and output m_matrix_local here (resizing nb,nb -> nw,nw)
       call setup_m_loc(common_data%kmesh_info, common_data%print_output, common_data%m_matrix_local, &
                        common_data%m_matrix_local, common_data%u_matrix, common_data%num_bands, &
                        common_data%num_kpts, common_data%num_wann, common_data%timer, &
@@ -606,8 +598,8 @@ contains
       call set_error_fatal(error, 'm_matrix_local not set for w90_project_overlap call', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
-    else if (.not. associated(common_data%u_opt)) then
-      call set_error_fatal(error, 'u_opt not set for w90_project_overlap call', common_data%comm)
+    else if (.not. associated(common_data%u_matrix_opt)) then
+      call set_error_fatal(error, 'u_matrix_opt not set for w90_project_overlap call', common_data%comm)
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     else if (.not. associated(common_data%u_matrix)) then
@@ -625,11 +617,11 @@ contains
       endif
 
       ! fixme, document!
-      common_data%u_matrix(:, :, :) = common_data%u_opt(:, :, :) ! u_opt contains initial projections
-      common_data%u_opt(:, :, :) = 0.d0
+      common_data%u_matrix(:, :, :) = common_data%u_matrix_opt(:, :, :) ! u_matrix_opt contains initial projections
+      common_data%u_matrix_opt(:, :, :) = 0.d0
       do ik = 1, common_data%num_kpts
         do iw = 1, common_data%num_wann
-          common_data%u_opt(iw, iw, ik) = 1.d0
+          common_data%u_matrix_opt(iw, iw, ik) = 1.d0
         enddo
       enddo
 
@@ -746,7 +738,7 @@ contains
                    common_data%kpoint_path, common_data%print_output, common_data%wannier_data, &
                    common_data%wann_plot, common_data%ws_region, common_data%w90_calculation, &
                    common_data%ham_k, common_data%ham_r, common_data%m_matrix_local, &
-                   common_data%u_matrix, common_data%u_opt, common_data%eigval, &
+                   common_data%u_matrix, common_data%u_matrix_opt, common_data%eigval, &
                    common_data%real_lattice, common_data%wannier_centres_translated, &
                    common_data%physics%bohr, common_data%irvec, common_data%mp_grid, &
                    common_data%ndegen, common_data%shift_vec, common_data%nrpts, &
@@ -788,7 +780,7 @@ contains
                      common_data%output_file, common_data%real_space_ham, common_data%tran, &
                      common_data%print_output, common_data%wannier_data, common_data%ws_region, &
                      common_data%w90_calculation, common_data%ham_k, common_data%ham_r, &
-                     common_data%u_matrix, common_data%u_opt, common_data%eigval, &
+                     common_data%u_matrix, common_data%u_matrix_opt, common_data%eigval, &
                      common_data%real_lattice, common_data%wannier_centres_translated, &
                      common_data%irvec, common_data%mp_grid, common_data%ndegen, &
                      common_data%shift_vec, common_data%nrpts, common_data%num_bands, &
@@ -804,13 +796,13 @@ contains
     endif
   end subroutine w90_transport
 
-  subroutine w90_set_m_local(common_data, m_orig) ! m_matrix_local_orig
+  subroutine w90_set_m_local(common_data, m_matrix_local) ! m_matrix_local_orig
     implicit none
 
     type(lib_common_type), intent(inout) :: common_data
-    complex(kind=dp), intent(inout), target :: m_orig(:, :, :, :)
+    complex(kind=dp), intent(inout), target :: m_matrix_local(:, :, :, :)
 
-    common_data%m_matrix_local => m_orig
+    common_data%m_matrix_local => m_matrix_local
   end subroutine w90_set_m_local
 
   subroutine w90_set_u_matrix(common_data, u_matrix)
@@ -822,13 +814,13 @@ contains
     common_data%u_matrix => u_matrix
   end subroutine w90_set_u_matrix
 
-  subroutine w90_set_u_opt(common_data, u_opt)
+  subroutine w90_set_u_opt(common_data, u_matrix_opt)
     implicit none
 
     type(lib_common_type), intent(inout) :: common_data
-    complex(kind=dp), intent(inout), target :: u_opt(:, :, :)
+    complex(kind=dp), intent(inout), target :: u_matrix_opt(:, :, :)
 
-    common_data%u_opt => u_opt
+    common_data%u_matrix_opt => u_matrix_opt
   end subroutine w90_set_u_opt
 
   subroutine w90_set_eigval(common_data, eigval)

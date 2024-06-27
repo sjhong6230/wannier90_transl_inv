@@ -73,9 +73,9 @@ program wannier
 
   character(len=:), allocatable :: seedname, progname, cpstatus
   character(len=:), pointer :: restart
-  complex(kind=dp), allocatable :: mloc(:, :, :, :)
-  complex(kind=dp), allocatable :: u(:, :, :)
-  complex(kind=dp), allocatable :: uopt(:, :, :)
+  complex(kind=dp), allocatable :: m_matrix_loc(:, :, :, :)
+  complex(kind=dp), allocatable :: u_matrix(:, :, :)
+  complex(kind=dp), allocatable :: u_matrix_opt(:, :, :)
   real(kind=dp), allocatable :: eigval(:, :)
   integer, allocatable :: distk(:)
   integer :: i, ctr
@@ -160,9 +160,9 @@ program wannier
   if (ierr /= 0) stop
 
   ! special branch for writing nnkp file
+  ! exit immediately after writing the nnkp file
   if (pp) then
-    ! please only invoke on rank 0
-    call write_kmesh(common_data, stdout, stderr, ierr)
+    call write_kmesh(common_data, stdout, stderr, ierr) ! only active on rank 0
     if (ierr /= 0) stop
     if (rank == 0) close (unit=stderr, status='delete')
 #ifdef MPI
@@ -184,15 +184,13 @@ program wannier
   nkl = count(distk == rank) ! number of kpoints this rank
   !write (*, *) 'rank, nw, nb, nk, nn, nk(rank): ', rank, nw, nb, nk, nn, nkl
 
-  allocate (mloc(nb, nb, nn, nkl))
-  allocate (u(nw, nw, nk))
-  allocate (uopt(nb, nw, nk))
+  allocate (m_matrix_loc(nb, nb, nn, nkl))
+  allocate (u_matrix(nw, nw, nk))
+  allocate (u_matrix_opt(nb, nw, nk))
 
-  call w90_set_m_local(common_data, mloc)  ! we don't need global m
-  call w90_set_u_matrix(common_data, u)
-  call w90_set_u_opt(common_data, uopt)
-
-  uopt = 0.d0 ! required when not disentangling
+  call w90_set_m_local(common_data, m_matrix_loc)  ! we don't need global m
+  call w90_set_u_matrix(common_data, u_matrix)
+  call w90_set_u_opt(common_data, u_matrix_opt)
 
 ! restart system
   lovlp = .true.
@@ -285,6 +283,12 @@ program wannier
     call w90_transport(common_data, stdout, stderr, ierr)
     if (ierr /= 0) stop
   endif
+
+  if (need_eigvals) deallocate (eigval)
+  deallocate (distk)
+  deallocate (m_matrix_loc)
+  deallocate (u_matrix)
+  deallocate (u_matrix_opt)
 
   call print_times(common_data, stdout)
   if (rank == 0) close (unit=stderr, status='delete')

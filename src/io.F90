@@ -413,7 +413,7 @@ contains
     mesg = 'not set'
 
     if (mpirank(comm) == 0) then
-      ! fixme, report all failing ranks instead of lowest failing rank (current stand)
+      ! currently this printout will list only the lowest failing rank, not all failing ranks
       do j = mpisize(comm) - 1, 1, -1
         call comms_no_sync_recv(je, 1, j, le, comm)
 

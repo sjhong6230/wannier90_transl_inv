@@ -2308,6 +2308,9 @@ contains
       ! U_matrix_opt
       read (chk_unit, err=124) (((u_matrix_opt(i, j, nkp), i=1, num_bands), j=1, num_wann), nkp=1, num_kpts)
 
+    else
+      ! if not read, u_matrix_opt must be explicitly zeroed
+      u_matrix_opt(:, :, :) = 0
     endif
 
     ! U_matrix
