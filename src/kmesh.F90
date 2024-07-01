@@ -257,6 +257,8 @@ contains
       if (allocated(error)) return
     end if
 
+    num_first_shells = kmesh_input%num_shells ! for convenience in printout error
+
     if (print_output%iprint > 0) then
       if (kmesh_input%higher_order_nearest_shells) then
         write (stdout, '(1x,a)', advance='no') '| The following shells are used: '
@@ -266,7 +268,6 @@ contains
       do ndnn = 1, kmesh_input%num_shells
         if (ndnn .eq. kmesh_input%num_shells) then
           write (stdout, '(i3,1x)', advance='no') kmesh_input%shell_list(ndnn)
-          num_first_shells = kmesh_input%num_shells
         else
           write (stdout, '(i3,",")', advance='no') kmesh_input%shell_list(ndnn)
         endif
