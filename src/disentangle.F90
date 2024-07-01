@@ -79,10 +79,10 @@ contains
     real(kind=dp) :: recip_lattice(3, 3), volume
     integer :: nkp, nkp2, nn, j, ierr, nkp_global
     logical :: linner                         !! Is there a frozen window
-    logical, allocatable :: lfrozen(:, :)   !! true if the i-th band inside outer window is frozen
-    integer, allocatable :: ndimfroz(:)             !! number of frozen bands at nkp-th k point
-    integer, allocatable :: indxfroz(:, :)  !! number of bands inside outer window at nkp-th k point
-    integer, allocatable :: indxnfroz(:, :) !! outer-window band index for the i-th non-frozen state
+    logical :: lfrozen(num_bands, num_kpts)   !! true if the i-th band inside outer window is frozen
+    integer :: ndimfroz(num_kpts)             !! number of frozen bands at nkp-th k point
+    integer :: indxfroz(num_bands, num_kpts)  !! number of bands inside outer window at nkp-th k point
+    integer :: indxnfroz(num_bands, num_kpts) !! outer-window band index for the i-th non-frozen state
     complex(kind=dp), allocatable :: a_matrix(:, :, :) ! (num_bands, num_wann, num_kpts)
     !! (equals 1 if it is the bottom of outer window)
 
@@ -99,30 +99,6 @@ contains
     my_node_id = mpirank(comm)
     on_root = (my_node_id == 0)
     nkrank = count(dist_k == my_node_id) ! this routine must proceed also in the case of zero k-points this rank, to ensure collective communications are matched
-
-    allocate (lfrozen(num_bands, num_kpts), stat=ierr) ! a_matrix is local to disentangle()
-    if (ierr /= 0) then
-      call set_error_alloc(error, 'Error in allocating lfrozen in dis_main', comm)
-      return
-    endif
-
-    allocate (ndimfroz(num_kpts), stat=ierr) ! a_matrix is local to disentangle()
-    if (ierr /= 0) then
-      call set_error_alloc(error, 'Error in allocating ndimfroz in dis_main', comm)
-      return
-    endif
-
-    allocate (indxfroz(num_bands, num_kpts), stat=ierr) ! a_matrix is local to disentangle()
-    if (ierr /= 0) then
-      call set_error_alloc(error, 'Error in allocating indxfroz in dis_main', comm)
-      return
-    endif
-
-    allocate (indxnfroz(num_bands, num_kpts), stat=ierr) ! a_matrix is local to disentangle()
-    if (ierr /= 0) then
-      call set_error_alloc(error, 'Error in allocating indxnfroz in dis_main', comm)
-      return
-    endif
 
     allocate (a_matrix(num_bands, num_wann, num_kpts), stat=ierr) ! a_matrix is local to disentangle()
     if (ierr /= 0) then
@@ -310,27 +286,6 @@ contains
     deallocate (a_matrix, stat=ierr)
     if (ierr /= 0) then
       call set_error_dealloc(error, 'Error in deallocating a_matrix in dis_main', comm)
-      return
-    endif
-
-    deallocate (lfrozen, stat=ierr) ! a_matrix is local to disentangle()
-    if (ierr /= 0) then
-      call set_error_dealloc(error, 'Error in deallocating lfrozen in dis_main', comm)
-      return
-    endif
-    deallocate (ndimfroz, stat=ierr) ! a_matrix is local to disentangle()
-    if (ierr /= 0) then
-      call set_error_dealloc(error, 'Error in deallocating ndimfroz in dis_main', comm)
-      return
-    endif
-    deallocate (indxfroz, stat=ierr) ! a_matrix is local to disentangle()
-    if (ierr /= 0) then
-      call set_error_dealloc(error, 'Error in deallocating indxfroz in dis_main', comm)
-      return
-    endif
-    deallocate (indxnfroz, stat=ierr) ! a_matrix is local to disentangle()
-    if (ierr /= 0) then
-      call set_error_dealloc(error, 'Error in deallocating indxnfroz in dis_main', comm)
       return
     endif
 
