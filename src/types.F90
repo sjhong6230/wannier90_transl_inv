@@ -121,10 +121,18 @@ module w90_types
     !!==================================================
     integer :: num_shells = 0
     !! no longer an input keyword
+    !! higher-order finite difference
+    integer :: max_shells_h ! \sum ((3, 2i)) (combination with rep.) = n(4n*2 + 15n + 17)/6
+    integer :: max_shells_aux ! = 6 for higher-order simple algorithm, n(4n*2 + 15n + 17)/6 for search algorithm
+    integer :: num_nnmax_h ! 2*n(4n*2 + 15n + 17)/6
+    integer :: higher_order_n = 1
+    logical :: higher_order_nearest_shells = .false. ! experimental feature
+    !! A simpler algorithm of determining bvectors
     logical :: skip_B1_tests = .false.
     !! do not check the B1 condition
     integer, allocatable :: shell_list(:)
     integer :: search_shells = 36
+    integer :: search_supcell_size = 5 !Size of supercell (of recip cell) in which to search for k-point shells
     real(kind=dp) :: tol = 0.000001_dp
   end type kmesh_input_type
 
@@ -189,6 +197,13 @@ module w90_types
     real(kind=dp) :: froz_max = huge(0.0_dp)
     !! upper bound of the disentanglement inner (frozen) window
     logical :: frozen_states = .false.
+    !! whether to use energy frozen window, i.e., froz_min/froz_max
+    real(kind=dp) :: proj_min
+    !! lower threshold of the projectability disentanglement, below are discarded
+    real(kind=dp) :: proj_max
+    !! upper threshold of the projectability disentanglement, equal and above are frozen
+    logical :: frozen_proj
+    !! whether to use projectability frozen window, i.e., proj_min/proj_max
     ! disentangle parameters
     ! Used by plot, hamiltonian, wannierise, postw90_common, get_oper - not read
     integer, allocatable :: ndimwin(:)

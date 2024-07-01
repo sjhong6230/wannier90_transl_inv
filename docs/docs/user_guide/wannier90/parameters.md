@@ -77,6 +77,8 @@ and the the `wannier90` Tutorial.
 |   skip_B1_tests   |  L   | Check the condition B1 of Ref [@marzari-prb97].                                                   |
 |      nnkpts       |  I   | Explicit list of nearest-neighbour k-points.                                     |
 |     kmesh_tol     |  R   | The tolerance to control if two kpoint belong to the same shell                  |
+|   higher_order_n  |  I   | The order of higher-order finite difference to get b-vectors and weights         |
+| higher_order_nearest_shells |  L   | Use the b-vectors on the nearest shells                                |
 <!-- markdownlint-enable MD013 -->
 
 `seedname.win` file keywords defining the system. Argument types are
@@ -122,6 +124,9 @@ translate_home_cell only relevant if `write_xyz` is `.true.`
 |        dis_win_max         |  P   | Top of the outer energy window                                         |
 |        dis_froz_min        |  P   | Bottom of the inner (frozen) energy window                             |
 |        dis_froz_max        |  P   | Top of the inner (frozen) energy window                                |
+|        dis_froz_proj       |  L   | To activate projectability disentanglement                             |
+|        dis_proj_min        |  P   | Lower threshold for projectability disentanglement                     |
+|        dis_proj_max        |  P   | Upper threshold for projectability disentanglement                     |
 |        dis_num_iter        |  I   | Number of iterations for the minimisation of $\Omega_{\mathrm{I}}$                    |
 |       dis_mix_ratio        |  R   | Mixing ratio during the minimisation of $\Omega_{\mathrm{I}}$                         |
 |        dis_conv_tol        |  R   | The convergence tolerance for finding $\Omega_{\mathrm{I}}$                           |
@@ -493,6 +498,19 @@ Two kpoints belong to the same shell if the distance between them is
 less than `kmesh_tol`. Units are Ang.
 
 The default value is 0.000001 Ang.
+
+### `integer :: higher_order_n`
+
+Specifies the order of finite-difference(FD) formula. The default is 1.
+Assuming the first-order FD uses #1, #3 shells for neighbors,
+then the n-th-order FD also includes 2, 3, ..., n times #1, #3 shells.
+A very high value of n may require larger `search_shells`.
+
+### `logical :: higher_order_nearest_shells`
+
+Instead of 2, 3, ..., n times the first-order shells, search the
+nearest shells from the origin to satisfy the higher-order version of
+the condition mentioned above. Not extensively tested.
 
 ## Projection
 

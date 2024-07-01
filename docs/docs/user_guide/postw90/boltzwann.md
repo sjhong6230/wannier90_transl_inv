@@ -153,7 +153,6 @@ columns are printed, with the spin-up projection of the DOS, followed by
 spin-down projection.
 
 !!! note
-
     Note that in `BoltzWann` the adaptive (energy) smearing scheme
     also implements a simple adaptive $k-$mesh scheme: if at any given
     $k$ point one of the band gradients is zero, then that $k$ point is

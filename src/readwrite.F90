@@ -681,6 +681,42 @@ contains
         return
       endif
     endif
+
+    ! ndimwin/lwindow are not read
+
+    ! default not using projectability disentanglement, since it works the best
+    ! with AMN generated from pseudo-atomic projections.
+    ! However, here upon reading AMN we do not know where it comes from.
+    ! So we still use energy disentanglement by default.
+    dis_manifold%frozen_proj = .false.
+    call w90_readwrite_get_keyword(settings, 'dis_froz_proj', found, error, comm, &
+                                   l_value=dis_manifold%frozen_proj)
+    if (allocated(error)) return
+
+    ! default values for proj_min and proj_max
+    dis_manifold%proj_min = 0.01_dp; dis_manifold%proj_max = 0.95_dp
+    call w90_readwrite_get_keyword(settings, 'dis_proj_min', found, error, comm, &
+                                   r_value=dis_manifold%proj_min)
+    if (allocated(error)) return
+    if (found) then
+      if ((dis_manifold%proj_min < 0.0_dp) .or. (dis_manifold%proj_min > 1.0_dp)) then
+        call set_error_input(error, 'Error: w90_readwrite_read_dis_manifold: dis_proj_min < 0.0 or > 1.0', comm)
+        return
+      endif
+    endif
+    call w90_readwrite_get_keyword(settings, 'dis_proj_max', found2, error, comm, &
+                                   r_value=dis_manifold%proj_max)
+    if (allocated(error)) return
+    if (found2) then
+      if ((dis_manifold%proj_max < 0.0_dp) .or. (dis_manifold%proj_max > 1.0_dp)) then
+        call set_error_input(error, 'Error: w90_readwrite_read_dis_manifold: dis_proj_max < 0.0 or > 1.0', comm)
+        return
+      endif
+    endif
+    if (dis_manifold%proj_max < dis_manifold%proj_min) then
+      call set_error_input(error, 'Error: w90_readwrite_read_dis_manifold: dis_proj_max < dis_proj_min', comm)
+      return
+    endif
   end subroutine w90_readwrite_read_dis_manifold
 
   subroutine w90_readwrite_read_kmesh_data(settings, kmesh_input, error, comm)
@@ -693,6 +729,7 @@ contains
 
     integer :: itmp, ierr
     logical :: found
+    integer :: n
 
     call w90_readwrite_get_keyword(settings, 'search_shells', found, error, comm, &
                                    i_value=kmesh_input%search_shells)
@@ -700,6 +737,32 @@ contains
     if (kmesh_input%search_shells < 0) then
       call set_error_input(error, 'Error: search_shells must be positive', comm)
       return
+    endif
+    call w90_readwrite_get_keyword(settings, 'search_supcell_size', found, error, comm, &
+                                   i_value=kmesh_input%search_supcell_size)
+    if (allocated(error)) return
+    if (kmesh_input%search_supcell_size < 0) then
+      call set_error_input(error, 'Error: search_supcell_size must be positive', comm)
+      return
+    endif
+    call w90_readwrite_get_keyword(settings, 'higher_order_n', found, error, comm, &
+                                   i_value=kmesh_input%higher_order_n)
+    if (allocated(error)) return
+    if (kmesh_input%higher_order_n < 0) then
+      call set_error_input(error, 'Error: higher_order_n must be positive', comm)
+      return
+    endif
+
+    n = kmesh_input%higher_order_n
+    kmesh_input%max_shells_h = n*(4*n**2 + 15*n + 17)/6
+    kmesh_input%max_shells_aux = kmesh_input%max_shells_h
+    kmesh_input%num_nnmax_h = 2*kmesh_input%max_shells_h
+
+    call w90_readwrite_get_keyword(settings, 'higher_order_nearest_shells', found, error, comm, &
+                                   l_value=kmesh_input%higher_order_nearest_shells)
+    if (allocated(error)) return
+    if (.not. kmesh_input%higher_order_nearest_shells) then
+      kmesh_input%max_shells_aux = 6
     endif
 
     call w90_readwrite_get_keyword(settings, 'kmesh_tol', found, error, comm, &
@@ -714,8 +777,8 @@ contains
                                         .true., error, comm)
     if (allocated(error)) return
     if (found) then
-      if (kmesh_input%num_shells < 0 .or. kmesh_input%num_shells > max_shells) then
-        call set_error_input(error, 'Error: number of shell in shell_list must be between zero and six', comm)
+      if (kmesh_input%num_shells < 0 .or. kmesh_input%num_shells > kmesh_input%max_shells_h) then
+        call set_error_input(error, 'Error: number of shell in shell_list must be between zero and kmesh_input%max_shells_h', comm)
         return
       endif
       !if (allocated(kmesh_input%shell_list)) deallocate (kmesh_input%shell_list)
@@ -734,7 +797,7 @@ contains
     else
       !if (allocated(kmesh_input%shell_list)) deallocate (kmesh_input%shell_list)
       ! this is the default allocation of the shell_list--used by kmesh_shell_automatic()
-      allocate (kmesh_input%shell_list(max_shells), stat=ierr)
+      allocate (kmesh_input%shell_list(kmesh_input%max_shells_h), stat=ierr)
       if (ierr /= 0) then
         call set_error_alloc(error, 'Error allocating shell_list in w90_readwrite_read_kmesh_data', comm)
         return
@@ -901,7 +964,6 @@ contains
     integer, allocatable :: lxa(:)
 
     ! keywords for wannier.x
-
     call clear_block(settings, 'atoms_cart', error, comm)
     call clear_block(settings, 'atoms_frac', error, comm)
     call clear_block(settings, 'dis_spheres', error, comm)
@@ -928,6 +990,9 @@ contains
     call w90_readwrite_get_keyword(settings, 'dis_conv_window', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'dis_froz_max', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'dis_froz_min', found, error, comm)
+    call w90_readwrite_get_keyword(settings, 'dis_froz_proj', found, error, comm)
+    call w90_readwrite_get_keyword(settings, 'dis_proj_min', found, error, comm)
+    call w90_readwrite_get_keyword(settings, 'dis_proj_max', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'dis_mix_ratio', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'dis_num_iter', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'dis_spheres_first_wann', found, error, comm)
@@ -948,6 +1013,8 @@ contains
     call w90_readwrite_get_keyword(settings, 'fixed_step', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'gamma_only', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'guiding_centres', found, error, comm)
+    call w90_readwrite_get_keyword(settings, 'higher_order_n', found, error, comm)
+    call w90_readwrite_get_keyword(settings, 'higher_order_nearest_shells', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'hr_cutoff', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'hr_plot', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'iprint', found, error, comm)
@@ -4259,7 +4326,7 @@ contains
   end subroutine init_settings
 
   subroutine expand_settings(settings) ! this is a compromise to avoid a fixed size
-    type(settings_data), allocatable :: nentries(:); 
+    type(settings_data), allocatable :: nentries(:)
     type(settings_type), intent(inout) :: settings
     integer :: n, m ! old, new sizes
     integer, parameter :: incsize = 20 ! default increment when settings array grows

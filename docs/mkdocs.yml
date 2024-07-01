@@ -70,6 +70,8 @@ nav:
       - "31: Platinum &#151; Selected columns of density matrix algorithm for spinor wavefunctions": "tutorials/tutorial_31.md"
       - "32: Tungsten &#151; SCDM parameters from projectability": "tutorials/tutorial_32.md"
       - "33: Monolayer BC₂N &#151; k&middot;p expansion coefficients": "tutorials/tutorial_33.md"
+      - "34: Graphene — Projectability-disentangled Wannier functions": "tutorials/tutorial_34.md"
+      - "35: Silicon — Projectability-disentangled Wannier functions with custom projectors": "tutorials/tutorial_35.md"
 
 theme:
   name: material
@@ -170,6 +172,8 @@ markdown_extensions:
   - pymdownx.mark
   - pymdownx.smartsymbols
   - pymdownx.snippets:
+      base_path:
+        - !relative $config_dir/..  # the directory of repo root
       auto_append:
         - includes/mkdocs.md
   - pymdownx.superfences:
