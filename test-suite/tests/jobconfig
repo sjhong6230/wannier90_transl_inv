@@ -128,6 +128,13 @@ program = WANNIER90_WOUT_OK
 inputs_args = ('knbo3.win', '')
 output = knbo3.wout
 
+# Test for the wannier position matrix elements and spreads using higher-order finite difference
+# with Stengel-Spaldin Functional and guiding_centres
+[testw90_knbo3_higher_stengel_spaldin/]
+program = WANNIER90_WOUT_OK
+inputs_args = ('knbo3.win', '')
+output = knbo3.wout
+
 # Test for the spin hall conductivity using higher-order finite difference
 [testpostw90_pt_shc_higher/]
 program = POSTW90_SHCFERMIDAT_OK
