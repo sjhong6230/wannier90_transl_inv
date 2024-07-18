@@ -181,20 +181,22 @@ contains
     if (on_root) then
       if (print_output%timing_level > 0) call io_stopwatch_start('plot: main', timer)
 
-      ! Print the header only if there is something to plot
-      if (output_file%write_hr .or. &
-          output_file%write_r2mn .or. &
-          output_file%write_rmn .or. &
-          output_file%write_tb .or. &
-          output_file%write_u_matrices .or. &
-          w90_calculation%bands_plot .or. &
-          w90_calculation%fermi_surface_plot .or. &
-          w90_calculation%wannier_plot) then
-        write (stdout, '(1x,a)') '*---------------------------------------------------------------------------*'
-        write (stdout, '(1x,a)') '|                               PLOTTING                                    |'
-        write (stdout, '(1x,a)') '*---------------------------------------------------------------------------*'
-        write (stdout, *)
-      end if
+      if (print_output%iprint > 0) then
+        ! Print the header only if there is something to plot
+        if (output_file%write_hr .or. &
+            output_file%write_r2mn .or. &
+            output_file%write_rmn .or. &
+            output_file%write_tb .or. &
+            output_file%write_u_matrices .or. &
+            w90_calculation%bands_plot .or. &
+            w90_calculation%fermi_surface_plot .or. &
+            w90_calculation%wannier_plot) then
+          write (stdout, '(1x,a)') '*---------------------------------------------------------------------------*'
+          write (stdout, '(1x,a)') '|                               PLOTTING                                    |'
+          write (stdout, '(1x,a)') '*---------------------------------------------------------------------------*'
+          write (stdout, *)
+        endif
+      endif
 
       if (w90_calculation%fermi_surface_plot) then
         call plot_fermi_surface(fermi_energy_list, recip_lattice, fermi_surface_plot, num_wann, &

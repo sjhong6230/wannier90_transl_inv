@@ -1801,7 +1801,6 @@ contains
     write (stdout, '(1X,A)') '* '//constants_version_str2//'*'
     write (stdout, '(1X,A)') '* '//bohr_version_str//'*'
     write (stdout, '(1X,A)') '******************************************************************************'
-    write (stdout, *) ''
 
     ! show parallel/serial execution
     if (mpi_size == 1) then
