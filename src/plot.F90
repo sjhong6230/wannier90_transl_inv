@@ -129,12 +129,6 @@ contains
 
     if (my_node_id == 0) on_root = .true.
 
-    if (output_file%svd_omega) then
-      call plot_svd_omega_i(num_wann, num_kpts, kmesh_info, m_matrix, print_output, timer, &
-                            dist_k, error, comm, stdout)
-      if (allocated(error)) return
-    endif
-
     call utility_recip_lattice_base(real_lattice, recip_lattice, volume)
 
     ! setup RS cluster for calculations that need it
@@ -278,6 +272,12 @@ contains
         endif
       endif
     end if !on_root
+
+    if (output_file%svd_omega) then
+      call plot_svd_omega_i(num_wann, num_kpts, kmesh_info, m_matrix, print_output, timer, &
+                            dist_k, error, comm, stdout)
+      if (allocated(error)) return
+    endif
 
     if (output_file%write_rmn) then
       ! parallel write_rmn
