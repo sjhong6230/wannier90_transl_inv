@@ -63,7 +63,7 @@ program wannier
   use w90_library_extra ! for input_reader_special, overlaps, etc
 
   use w90_comms, only: w90_comm_type, comms_sync_error
-  use w90_io, only: io_print_timings, io_commandline, io_date, prterr
+  use w90_io, only: io_commandline, io_date, prterr
   use w90_sitesym, only: sitesym_read
   use w90_error, only: w90_error_type, set_error_input
 
@@ -136,7 +136,7 @@ program wannier
   if (ierr /= 0) stop
 
   ! write useful info (includes jazzy header info)
-  call input_print_details(common_data, stdout, stderr, ierr)
+  call w90_print_info(common_data, stdout, stderr, ierr)
   if (ierr /= 0) stop
 
   ! test mpi error handling using "unlucky" input token

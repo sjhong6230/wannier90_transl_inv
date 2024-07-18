@@ -174,7 +174,7 @@ module w90_library
   end type lib_common_type
   !! container type for all variables used by the Wannier90 library
 
-  public :: input_print_details
+  public :: w90_print_info
   !! prints a wide variety of simulation parameters to stdout
   public :: w90_create_kmesh
   ! trigers the generation of k-mesh info (as do get_nn*)
@@ -1071,7 +1071,7 @@ contains
     common_data%comm%comm = comm
   end subroutine w90_set_comm
 
-  subroutine input_print_details(common_data, istdout, istderr, ierr)
+  subroutine w90_print_info(common_data, istdout, istderr, ierr)
     use w90_error_base, only: w90_error_type
     use w90_readwrite, only: w90_readwrite_write_header
     use w90_wannier90_readwrite, only: w90_wannier90_readwrite_write
@@ -1122,7 +1122,7 @@ contains
       call prterr(error, ierr, istdout, istderr, common_data%comm)
       return
     endif
-  end subroutine input_print_details
+  end subroutine w90_print_info
 
   subroutine w90_set_option_text(common_data, keyword, text)
     use w90_readwrite, only: init_settings, expand_settings
