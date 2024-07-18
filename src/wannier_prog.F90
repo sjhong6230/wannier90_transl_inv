@@ -78,7 +78,6 @@ program wannier
   complex(kind=dp), allocatable :: u_matrix_opt(:, :, :)
   real(kind=dp), allocatable :: eigval(:, :)
   integer, allocatable :: dist_k(:)
-  integer :: i, ctr
   integer :: mpisize, rank, ierr, nkl
   integer, pointer :: nb, nk, nw, nn
   integer :: stdout, stderr
@@ -121,23 +120,38 @@ program wannier
 #endif
 
   ! open main output file
-  open (newunit=stdout, file=seedname//'.wout', status="replace")
+  if (rank == 0) open (newunit=stdout, file=seedname//'.wout', status="replace")
+
   ! open main error file
-  call w90_get_fortran_stderr(stderr)
+  ! call w90_get_fortran_stderr(stderr) !alternative for terminal output
   if (rank == 0) open (newunit=stderr, file=seedname//'.werr', status="replace")
 
   call io_date(cdate, ctime)
   if (rank == 0) write (stderr, *) 'Wannier90: Execution started on ', cdate, ' at ', ctime
 
+  ! read key parameters from .win file
   call input_reader_special(common_data, seedname, stdout, stderr, ierr)
   if (ierr /= 0) stop
 
+  ! read all remaining parameters from .win file
   call w90_input_reader(common_data, stdout, stderr, ierr)
   if (ierr /= 0) stop
 
   ! write useful info (includes jazzy header info)
   call w90_print_info(common_data, stdout, stderr, ierr)
   if (ierr /= 0) stop
+
+  ! special branch for writing nnkp file
+  ! exit immediately after writing the nnkp file
+  if (pp) then
+    call write_kmesh(common_data, stdout, stderr, ierr) ! only active on rank 0
+    if (ierr /= 0) stop
+    if (rank == 0) close (unit=stderr, status='delete')
+#ifdef MPI
+    call mpi_finalize(ierr)
+#endif
+    stop
+  endif
 
   ! test mpi error handling using "unlucky" input token
   if (rank == -common_data%print_output%timing_level) then
@@ -169,18 +183,7 @@ program wannier
   call set_kpoint_distribution(common_data, dist_k, stdout, stderr, ierr)
   if (ierr /= 0) stop
 
-  ! special branch for writing nnkp file
-  ! exit immediately after writing the nnkp file
-  if (pp) then
-    call write_kmesh(common_data, stdout, stderr, ierr) ! only active on rank 0
-    if (ierr /= 0) stop
-    if (rank == 0) close (unit=stderr, status='delete')
-#ifdef MPI
-    call mpi_finalize(ierr)
-#endif
-    stop
-  endif
-
+  ! setup SAWF data
   if (common_data%lsitesymmetry) then
     call sitesym_read(common_data%sitesym, nb, nk, nw, seedname, error, common_data%comm) ! (not a library call)
     if (allocated(error)) then
@@ -343,6 +346,7 @@ program wannier
   if (rank == 0) close (unit=stderr, status='delete')
 
   if (rank == 0) write (stdout, '(1x,a)') 'All done: wannier90 exiting'
+  if (rank == 0) close (unit=stdout)
 
 #ifdef MPI
   call mpi_finalize(ierr)

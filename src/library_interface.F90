@@ -518,7 +518,6 @@ contains
 
     ! local variables
     type(w90_error_type), allocatable :: error
-    integer :: ioff
 
     ierr = 0
 
