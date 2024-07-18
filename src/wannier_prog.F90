@@ -161,16 +161,9 @@ program wannier
     write (stderr, *) 'Wannier90: failed to allocate dist_k array!'
     stop
   endif
-
-  ctr = 0
-  do i = 0, mpisize - 1
-    nkl = nk/mpisize ! number of kpoints per rank
-    if (mod(nk, mpisize) > i) nkl = nkl + 1
-    if (nkl > 0) then
-      dist_k(ctr + 1:ctr + nkl) = i
-      ctr = ctr + nkl
-    endif
-  enddo
+  ! get a basic k-point/rank distribution
+  call w90_distribute_kpts(common_data, nk, mpisize, dist_k, stdout, stderr, ierr)
+  if (ierr /= 0) stop
 
   ! copy distribution to library
   call set_kpoint_distribution(common_data, dist_k, stdout, stderr, ierr)

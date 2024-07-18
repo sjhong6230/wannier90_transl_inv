@@ -181,6 +181,8 @@ module w90_library
   ! this is called by get_nnkp and get_gkpb
   public :: w90_disentangle
   !! perform disentanglement
+  public :: w90_distribute_kpts
+  !! provides an MPI k-point distribution for codes that don't have one
   public :: w90_get_centres
   !! get wannier centers
   public :: w90_get_fortran_file
@@ -1302,4 +1304,61 @@ contains
       call expand_settings(common_data%settings)
     endif
   endsubroutine w90_set_option_real
+
+  subroutine w90_distribute_kpts(common_data, num_kpts, mpi_size, dist_k, istdout, istderr, ierr)
+    !! provide a distribution of num_kpts k-points across mpi_size MPI ranks
+    ! should be called from all ranks in a parallel environment for error propagation
+    use w90_comms, only: comms_sync_error
+    use w90_error_base, only: w90_error_type
+    use w90_error, only: set_error_fatal
+
+    implicit none
+
+    ! arguments
+    integer, intent(in) :: num_kpts
+    !! number of k-points
+    integer, intent(in) :: mpi_size
+    !! number of ranks in MPI communicator
+    integer, intent(in) :: istdout, istderr
+    !! destination for error messages
+    integer, intent(inout), allocatable :: dist_k(:)
+    !! already allocated array
+    !! assigned here such that dist_k(i) = rank handling kpt i
+    !! size and allocation status are tested
+    integer, intent(out) :: ierr
+    !! return code, nonzero in case of error
+    type(lib_common_type), intent(in) :: common_data
+    !! library object: only the communicator type is referenced
+
+    ! local variables
+    type(w90_error_type), allocatable :: error
+    integer :: ctr, i, nkl
+
+    ierr = 0
+
+    if (mpi_size < 1) then
+      call set_error_fatal(error, 'Error: mpi_size < 1 in w90_distribute_kpts call.', common_data%comm)
+    elseif (num_kpts < 1) then
+      call set_error_fatal(error, 'Error: num_kpts < 1 in w90_distribute_kpts call.', common_data%comm)
+    elseif (.not. allocated(dist_k)) then
+      call set_error_fatal(error, 'Error: dist_k not allocated in w90_distribute_kpts call.', common_data%comm)
+    elseif (size(dist_k) < num_kpts) then
+      call set_error_fatal(error, 'Error: size(dist_k) < num_kpts in w90_distribute_kpts call.', common_data%comm)
+    endif
+    if (allocated(error)) then
+      call prterr(error, ierr, istdout, istderr, common_data%comm)
+      return
+    endif
+
+    ctr = 0
+    do i = 0, mpi_size - 1
+      nkl = num_kpts/mpi_size ! number of kpoints per rank
+      if (mod(num_kpts, mpi_size) > i) nkl = nkl + 1
+      if (nkl > 0) then
+        dist_k(ctr + 1:ctr + nkl) = i
+        ctr = ctr + nkl
+      endif
+    enddo
+  end subroutine w90_distribute_kpts
+
 end module w90_library

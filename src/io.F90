@@ -437,7 +437,7 @@ contains
       write (istderr, *) 'Exiting.......'
       write (istderr, '(1x,a)') trim(mesg)
       write (istderr, '(1x,a,i0,a)') '(rank: ', failrank, ')'
-      write (istderr, '(1x,a)') ' error encountered; check .wout log'
+      !write (istderr, '(1x,a)') 'error encountered; check .wout log'
 
     else ! non 0 ranks
       je = error%code
