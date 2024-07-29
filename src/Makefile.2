@@ -53,9 +53,9 @@ w90spn2spn: ../../w90spn2spn.x
 $(LIBRARYV2): $(OBJS)
 	$(AR) $(ARFLAGS) $(LIBRARYV2) $(OBJS)
 
-$(LIBRARYV2EXTRA): library_extra.o 
+$(LIBRARYV2EXTRA): library_extra.o
 	$(AR) $(ARFLAGS) $(LIBRARYV2EXTRA) library_extra.o
-        
+
 post: POSTOPTS = $(TEMP1)
 post: COMPILER = $(TEMP2)
 post: mpi_test ../../postw90.x
@@ -112,7 +112,7 @@ library_extra.o : ../library_extra.F90
 c_interface.o : ../c_interface.F90 \
 	library_interface.o comms.o constants.o error_base.o io.o kmesh.o overlap.o plot.o transport.o \
 	types.o wannier90_readwrite.o wannier90_types.o wannierise.o
-	 $(COMPILER) $(POSTOPTS) $(FCOPTS) --std=f2018 -c ../c_interface.F90
+	 $(COMPILER) $(POSTOPTS) $(FCOPTS) -c ../c_interface.F90
 
 constants.o: ../constants.F90
 	 $(COMPILER) $(POSTOPTS) $(FCOPTS) -c ../constants.F90
