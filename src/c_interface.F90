@@ -215,7 +215,7 @@ contains
     real(kind=c_double), value  :: cdble
     type(lib_common_type), pointer :: w90_fptr
     call c_f_pointer(w90_obj%caddr, w90_fptr)
-    call w90_set_option_real(w90_fptr, keyword, cdble)
+    call w90_set_option(w90_fptr, keyword, cdble)
   end subroutine
 
   subroutine w90_set_option_double1d_c(w90_obj, keyword, arg_cptr, x) bind(c)
@@ -228,7 +228,7 @@ contains
     real(kind=8), pointer :: fptr(:)
     call c_f_pointer(arg_cptr, fptr, [x])
     call c_f_pointer(w90_obj%caddr, w90_fptr)
-    call w90_set_option_r1d(w90_fptr, keyword, fptr)
+    call w90_set_option(w90_fptr, keyword, fptr)
   end subroutine
 
   subroutine w90_set_option_double2d_c(w90_obj, keyword, arg_cptr, x, y) bind(c)
@@ -241,7 +241,7 @@ contains
     real(kind=8), pointer :: fptr(:, :)
     call c_f_pointer(arg_cptr, fptr, [y, x]) ! these are reversed wrt c
     call c_f_pointer(w90_obj%caddr, w90_fptr)
-    call w90_set_option_r2d(w90_fptr, keyword, fptr)
+    call w90_set_option(w90_fptr, keyword, fptr)
   end subroutine
 
   subroutine w90_set_option_int_c(w90_obj, keyword, cint) bind(c)
@@ -289,7 +289,7 @@ contains
     type(lib_common_type), pointer :: w90_fptr
     fbool = bool
     call c_f_pointer(w90_obj%caddr, w90_fptr)
-    call w90_set_option_logical(w90_fptr, keyword, fbool)
+    call w90_set_option(w90_fptr, keyword, fbool)
   end subroutine
 
   subroutine w90_set_option_text_c(w90_obj, keyword, text) bind(c)
@@ -299,7 +299,7 @@ contains
     character(*, kind=c_char) :: text
     type(lib_common_type), pointer :: w90_fptr
     call c_f_pointer(w90_obj%caddr, w90_fptr)
-    call w90_set_option_text(w90_fptr, keyword, text)
+    call w90_set_option(w90_fptr, keyword, text)
   end subroutine
 
 end module w90_library_c
