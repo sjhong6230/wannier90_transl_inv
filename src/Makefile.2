@@ -11,21 +11,22 @@ else
 COMMS = serial
 endif
 
-# Contains definition of OBJS, OBJS_POST, LIBRARY, DYNLIBRARY
-include ../Makefile.header
-
 POSTDIR = ../postw90/
 
 ifeq ($(COMMS),mpi08)
+USEMPI=y
 TEMP1 = -DMPI -DMPI08
 TEMP2 = $(MPIF90)
 else ifeq ($(COMMS),mpih)
+USEMPI=y
 TEMP1 = -DMPI -DMPIH
 TEMP2 = $(MPIF90)
 else ifeq ($(COMMS),mpi90)
+USEMPI=y
 TEMP1 = -DMPI -DMPI90
 TEMP2 = $(MPIF90)
 else ifeq ($(COMMS),mpi)
+USEMPI=y
 # default to f90 style "use mpi"
 TEMP1 = -DMPI -DMPI90
 TEMP2 = $(MPIF90)
@@ -34,6 +35,8 @@ TEMP1 =
 TEMP2 = $(F90)
 endif
 
+# Contains definition of OBJS, OBJS_POST, LIBRARY, DYNLIBRARY
+include ../Makefile.header
 
 wannier libs dynlibs w90chk2chk w90spn2spn: POSTOPTS = $(TEMP1)
 wannier libs dynlibs w90chk2chk w90spn2spn: COMPILER = $(TEMP2)
@@ -112,7 +115,7 @@ library_extra.o : ../library_extra.F90
 c_interface.o : ../c_interface.F90 \
 	library_interface.o comms.o constants.o error_base.o io.o kmesh.o overlap.o plot.o transport.o \
 	types.o wannier90_readwrite.o wannier90_types.o wannierise.o
-	 $(COMPILER) $(POSTOPTS) $(FCOPTS) -c ../c_interface.F90
+	 $(COMPILER) $(POSTOPTS) $(FCOPTS) -c ../c_interface.F90 --std=f2018
 
 constants.o: ../constants.F90
 	 $(COMPILER) $(POSTOPTS) $(FCOPTS) -c ../constants.F90

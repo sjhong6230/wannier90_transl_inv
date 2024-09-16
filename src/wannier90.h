@@ -1,5 +1,5 @@
-#ifndef __wannier90_h__
-#define __wannier90_h__
+#ifndef WANNIER90_H
+#define WANNIER90_H
 
 #include <ISO_Fortran_binding.h>
 #include <string.h>

@@ -1,5 +1,9 @@
-#include "wannier90.hh"
+
+extern "C" {
+        #include "wannier90.h"
+}
 #include <cassert>
+#include <complex>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -62,25 +66,29 @@ int main(int argc, char* argv[]) {
         int nb = nband(filestring);
         if (nb == 0) nb = nw; // not specified in input
 
+
+
         ///////////// LIBRARY
 
-        void* w90glob = w90_create(); // allocate an instance of the library data block
+        w90_data w90glob;
+        w90_create(w90glob); 
 
-        cset_option(w90glob, "kpoints", &kpt[0][0], nk, 3);
-        cset_option(w90glob, "mp_grid", nkabc);
-        cset_option(w90glob, "num_bands", nb);
-        cset_option(w90glob, "num_kpts", nk);
-        cset_option(w90glob, "num_wann", nw);
-        cset_option(w90glob, "unit_cell_cart", &uc[0][0], 3, 3);
+        w90_set_option_double2d(w90glob, "kpoints", &kpt[0][0], nk, 3);
+        w90_set_option_int1d(w90glob, "mp_grid", nkabc, 3);
+        w90_set_option_int(w90glob, "num_bands", nb);
+        w90_set_option_int(w90glob, "num_kpts", nk);
+        w90_set_option_int(w90glob, "num_wann", nw);
+        w90_set_option_double2d(w90glob, "unit_cell_cart", &uc[0][0], 3, 3);
 
         int ierr;
-        cinput_setopt(w90glob, root.c_str(), ierr); // process necessary library options
-        assert(ierr == 0);
-        cinput_reader(w90glob, ierr); // process any other options
+        w90_input_setopt(w90glob, root.c_str(), ierr); // process necessary library options
+
+        w90_input_reader_c(w90glob, ierr); // process any other options
         assert(ierr == 0);
 
         int nnfd;
-        cget_nn(w90glob, nnfd); // return number of NN in FD scheme
+        w90_get_nn_c(w90glob, &nnfd); // return number of NN in FD scheme
+        cout << nnfd <<endl;
 
         // prepare nnkp and gkpb arrans
         // horrible contortions to make multidimensional arrays...
@@ -101,8 +109,8 @@ int main(int argc, char* argv[]) {
                 }
         }
 
-        cget_nnkp(w90glob, &nnkp[0][0]); // return indexes of NN k-points in FD scheme
-        cget_gkpb(w90glob, &gkpb[0][0][0]);
+        w90_get_nnkp_c(w90glob, &nnkp[0][0]); // return indexes of NN k-points in FD scheme
+        w90_get_gkpb_c(w90glob, &gkpb[0][0][0]);
 
         // printout nnkp data for testing
         for (int i = 0; i < nk; ++i) {
@@ -120,10 +128,10 @@ int main(int argc, char* argv[]) {
         complex<double>* umat = new complex<double>[nw * nw * nk];
         double* edata = new double[nb * nk];
 
-        cset_m_local(w90glob, mdata); // m matrix
-        cset_u_matrix(w90glob, umat); // results returned here
-        cset_u_opt(w90glob, adata);   // initial projections
-        cset_eigval(w90glob, edata);  // contains eigenvalues
+        w90_set_m_local_c(w90glob, mdata); // m matrix
+        w90_set_u_matrix_c(w90glob, umat); // results returned here
+        w90_set_u_opt_c(w90glob, adata);   // initial projections
+        w90_set_eigval_c(w90glob, edata);  // contains eigenvalues
 
         fn = root + ".mmn";
         readm(fn, nnkp, gkpb, nk, nb, nnfd, mdata);
@@ -134,15 +142,17 @@ int main(int argc, char* argv[]) {
         fn = root + ".eig";
         if (filesystem::exists(fn)) reade(fn, nk, nb, edata);
 
-        cdisentangle(w90glob, ierr);
-        cproject(w90glob, ierr);
+        w90_disentangle_c(w90glob, ierr);
+        w90_project_overlap_c(w90glob, ierr);
         assert(ierr == 0);
 
-        cwannierise(w90glob, ierr);
+        w90_wannierise_c(w90glob, ierr);
         assert(ierr == 0);
 
-        //        cget_centres(w90glob, wannier_ctr);
-        //       cget_spreads(w90glob, wannier_spr);
+        double wannier_ctr[nw];
+        double wannier_spr[nw];
+        w90_get_centres_c(w90glob, wannier_ctr);
+        w90_get_spreads_c(w90glob, wannier_spr);
         w90_delete(w90glob);
 
         return 0;

@@ -20,8 +20,6 @@ WRAPSRC = ../src/constants.F90 ../src/types.F90 ../src/wannier90_readwrite.F90 \
         ../src/library_extra.F90
 #	../src/postw90/postw90_types.F90../src/postw90/pw90_library.F90
 
-LIBRARYV2 = ../../libwan2.a
-LIBRARYV2EXTRA = ../../libwan2-extra.a
 
 ## Dynamic library section
 ## Define some defaults (good for linux) if none is defined in the make.inc
@@ -30,11 +28,17 @@ LIBRARYV2EXTRA = ../../libwan2-extra.a
 ## calling it .so and using -shared often works equally well)
 ## NOTE: if you want to compile the dynamic library, you have to compile
 ## everything with -fPIC usually, on 64bit systems
-DYNLIBRARYEXTENSION ?= so
-SHAREDLIBFLAGS ?=-shared -fPIC
+SHAREDLIBFLAGS ?=-shared -Wl,-soname,libwannier90.so.4 -fPIC
 
 ## Define the filename
-DYNLIBBASE = wannier_$(COMMS)
-DYNLIBEXTRABASE = wannier-extra_$(COMMS)
-DYNLIBRARY = lib$(DYNLIBBASE).$(DYNLIBRARYEXTENSION)
-DYNLIBRARYEXTRA = lib$(DYNLIBEXTRABASE).$(DYNLIBRARYEXTENSION)
+ifdef USEMPI
+  LIBSUFFIX=mpi
+else
+  LIBSUFFIX=serial
+endif
+
+DYNLIBBASE = wannier90_$(LIBSUFFIX)
+LIBRARYV2 =       ../../libwannier90_$(LIBSUFFIX).a
+LIBRARYV2EXTRA =  ../../libwannier90-extra_$(LIBSUFFIX).a
+DYNLIBRARY =            libwannier90_$(LIBSUFFIX).so.4
+DYNLIBRARYEXTRA =       libwannier90-extra_$(LIBSUFFIX).so.4

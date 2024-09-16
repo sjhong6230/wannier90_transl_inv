@@ -1,7 +1,7 @@
 include ../../make.inc
 .cc.o:
-	$(CXX) -I ../../src -c $< 
+	$(CXX) -g -I ../../src -c $<  -fpermissive
 wannier_c.x : wannier.o ../../libwan2.a
-	$(CXX)  wannier.o ../../libwan2.a $(LIBS) -lgfortran -o $@
+	$(CXX) -g  wannier.o ../../libwan2.a $(LIBS) -lgfortran -o $@ -fpermissive
 clean:
 	@rm wannier.o wannier_c.x

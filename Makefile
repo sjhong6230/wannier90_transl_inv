@@ -26,8 +26,8 @@ install: default
 	if [ -f "utility/w90pov/w90pov" ]; then install -m755 "utility/w90pov/w90pov" "$(DESTDIR)$(PREFIX)/bin/w90pov"; fi;
 	if [ -f "utility/w90vdw/w90vdw.x" ]; then install -m755 "utility/w90vdw/w90vdw.x" "$(DESTDIR)$(PREFIX)/bin/w90vdw.x"; fi;
 	install -d $(DESTDIR)$(PREFIX)/lib/
-	if [ -f "libwannier.a" ]; then install -m644 "libwannier.a" "$(DESTDIR)$(PREFIX)/lib/libwannier.a"; fi;
-	if [ -f "libwannier.a" ]; then $(MAKE) pkgconfig; fi;
+	if [ -f "$(LIBRARYV2)" ]; then install -m644 "$(LIBRARYV2)" "$(DESTDIR)$(PREFIX)/lib/$(LIBRARYV2)"; fi;
+	if [ -f "$(LIBRARYV2)" ]; then $(MAKE) pkgconfig; fi;
 
 all: wannier lib post w90chk2chk w90pov w90vdw w90spn2spn
 
@@ -92,7 +92,7 @@ clean:
 	cd $(ROOTDIR)/test-suite && ./clean_tests
 
 veryclean: clean
-	cd $(ROOTDIR) && rm -f wannier90.x postw90.x libwannier.a libwan2.a w90chk2chk.x w90spn2spn.x libwan2-extra.a
+	cd $(ROOTDIR) && rm -f wannier90.x postw90.x libwannier.a w90chk2chk.x w90spn2spn.x libwannier-extra.a
 	cd $(ROOTDIR)/test-suite && ./clean_tests -i
 
 thedoc:
