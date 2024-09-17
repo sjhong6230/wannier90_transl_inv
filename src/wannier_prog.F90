@@ -343,10 +343,11 @@ program wannier
 
   call print_times(common_data, stdout)
 
-  if (rank == 0) close (unit=stderr, status='delete')
-
-  if (rank == 0) write (stdout, '(1x,a)') 'All done: wannier90 exiting'
-  if (rank == 0) close (unit=stdout)
+  if (rank == 0) then
+    close (unit=stderr, status='delete')
+    write (stdout, '(1x,a)') 'All done: wannier90 exiting'
+    close (unit=stdout)
+  endif
 
 #ifdef MPI
   call mpi_finalize(ierr)
