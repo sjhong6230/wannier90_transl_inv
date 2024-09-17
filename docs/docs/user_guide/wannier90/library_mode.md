@@ -551,6 +551,10 @@ Error: Type mismatch in argument ‘comm’ at (1); passed INTEGER(4) to TYPE(mp
 
 1. Do not use 'no_realloc_lhs' option
 
+2. [libasan](https://github.com/google/sanitizers/wiki/AddressSanitizer) may fail
+for gcc/openmpi builds (at pmpi_init() call); similarly ifx/impi builds with
+"-check" ("-check all")
+
 ### Parallel libraries cannot be called from serial code
 
 Parallel libraries cannot be called from serial code because mpi_init() must be
