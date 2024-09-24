@@ -62,6 +62,7 @@ module w90_readwrite
   public :: w90_readwrite_read_kmesh_data
   public :: w90_readwrite_read_kpath
   public :: w90_readwrite_read_kpoints
+  public :: w90_readwrite_read_explicit_kpath
   public :: w90_readwrite_read_lattice
   public :: w90_readwrite_read_mp_grid
   public :: w90_readwrite_read_num_bands
@@ -449,6 +450,56 @@ contains
       endif
     endif
   end subroutine w90_readwrite_read_kpath
+
+  subroutine w90_readwrite_read_explicit_kpath(settings, kpoint_path, ok, bands_plot, bohr, error, comm)
+    use w90_error, only: w90_error_type, set_error_input, set_error_alloc
+    implicit none
+    logical, intent(in) :: bands_plot
+    type(kpoint_path_type), intent(inout) :: kpoint_path
+    logical, intent(out) :: ok
+    real(kind=dp), intent(in) :: bohr
+    type(w90_error_type), allocatable, intent(out) :: error
+    type(w90_comm_type), intent(in) :: comm
+    type(settings_type), intent(inout) :: settings
+
+    integer :: i_temp, ierr, bands_num_spec_points
+    logical :: found
+
+    bands_num_spec_points = 0
+    kpoint_path%bands_kpt_explicit = .false.
+    call w90_readwrite_get_block_length(settings, 'explicit_kpath_labels', found, bands_num_spec_points, error, comm)
+    if (allocated(error)) return
+    if (found) then
+      ok = .true.
+      kpoint_path%bands_kpt_explicit = .true.
+!      bands_num_spec_points = i_temp*2
+      if (allocated(kpoint_path%labels)) deallocate (kpoint_path%labels)
+      allocate (kpoint_path%labels(bands_num_spec_points), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error allocating explicit_kpath labels in w90_wannier90_readwrite_read', comm)
+        return
+      endif
+      if (allocated(kpoint_path%points)) deallocate (kpoint_path%points)
+      allocate (kpoint_path%points(3, bands_num_spec_points), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error allocating explicit kpoint labels in w90_wannier90_readwrite_read', comm)
+        return
+      endif
+      call w90_readwrite_get_keyword_explicit_kpath(settings, kpoint_path, error, comm)
+      if (allocated(error)) return
+      call w90_readwrite_read_explicit_kpath_points(settings, kpoint_path%bands_kpt_frac, bohr, &
+      error, comm)
+      if (allocated(error)) return
+    else
+      ok = .false.
+    end if
+    ! if (bands_plot) then
+    !   if (kpoint_path%num_points_first_segment < 0) then
+    !     call set_error_input(error, 'Error: bands_num_points must be positive', comm)
+    !     return
+    !   endif
+    ! endif
+  end subroutine w90_readwrite_read_explicit_kpath
 
   subroutine w90_readwrite_read_fermi_energy(settings, found_fermi_energy, fermi_energy_list, &
                                              error, comm)
@@ -875,6 +926,59 @@ contains
     endif
   end subroutine w90_readwrite_read_kpoints
 
+subroutine w90_readwrite_read_explicit_kpath_points(settings, kpt_latt, bohr, &
+    error, comm)
+    use w90_error, only: w90_error_type, set_error_input, set_error_alloc, set_error_dealloc
+    implicit none
+
+    ! arguments
+    real(kind=dp), allocatable, intent(out) :: kpt_latt(:, :)
+    real(kind=dp), intent(in) :: bohr
+    type(settings_type), intent(inout) :: settings
+    type(w90_comm_type), intent(in) :: comm
+    type(w90_error_type), allocatable, intent(out) :: error
+
+    ! local variables
+    real(kind=dp), allocatable :: kpt_cart(:, :)
+    integer :: ierr, num_kpts
+    logical :: found
+
+    ! pw90_effective_model ignores kpt_cart
+    ! this routine allocates the intent(out) kpt_latt
+
+    call w90_readwrite_get_block_length(settings, 'explicit_kpath', found, num_kpts, error, comm)
+
+    ierr = 0
+
+    allocate (kpt_latt(3, num_kpts), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error allocating kpt_latt in w90_readwrite_read_explicit_kpath', comm)
+      return
+    endif
+
+
+    allocate (kpt_cart(3, num_kpts), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error allocating kpt_cart in w90_readwrite_read_explicit_kpath', comm)
+      return
+    endif
+
+    call w90_readwrite_get_keyword_block(settings, 'explicit_kpath', found, num_kpts, 3, bohr, error, &
+      comm, r_value=kpt_cart)
+    if (allocated(error)) return
+      if (.not. found) then
+        call set_error_input(error, 'Error: Found explicit_kpath_labels but there is no explicit_kpath block', comm)
+        return
+      endif
+      kpt_latt = kpt_cart
+
+      deallocate (kpt_cart, stat=ierr)
+      if (ierr /= 0) then
+        call set_error_dealloc(error, 'Error deallocating kpt_cart in w90_readwrite_read_explicit_kpath', comm)
+        return
+      endif
+end subroutine w90_readwrite_read_explicit_kpath_points
+
   subroutine w90_readwrite_read_lattice(settings, real_lattice, bohr, error, comm)
     use w90_error, only: w90_error_type, set_error_input
     implicit none
@@ -969,6 +1073,8 @@ contains
     call clear_block(settings, 'dis_spheres', error, comm)
     call clear_block(settings, 'kpoint_path', error, comm)
     call clear_block(settings, 'kpoints', error, comm)
+    call clear_block(settings, 'explicit_kpath_labels', error, comm)
+    call clear_block(settings, 'explicit_kpath', error, comm)
     call clear_block(settings, 'nnkpts', error, comm)
     call clear_block(settings, 'projections', error, comm)
     call clear_block(settings, 'slwf_centres', error, comm)
@@ -4240,6 +4346,101 @@ contains
 240 call set_error_input(error, 'w90_readwrite_get_keyword_kpath: Problem reading kpath '//trim(dummy), comm)
     return
   end subroutine w90_readwrite_get_keyword_kpath
+
+  subroutine w90_readwrite_get_keyword_explicit_kpath(settings, kpoint_path, error, comm)
+    !================================================!
+    !
+    !!  Fills the explicit_kpath_labels data block
+    !
+    !================================================!
+    use w90_error, only: w90_error_type, set_error_input
+
+    implicit none
+
+    type(kpoint_path_type), intent(inout) :: kpoint_path
+    type(w90_error_type), allocatable, intent(out) :: error
+    type(w90_comm_type), intent(in) :: comm
+    type(settings_type), intent(inout) :: settings
+
+    character(len=20) :: keyword
+    integer           :: ic, in, ins, ine, loop, inner_loop, i, line_e, line_s, counter
+    logical           :: found_e, found_s
+    character(len=maxlen) :: dummy, end_st, start_st
+
+    keyword = "explicit_kpath_labels"
+
+    found_s = .false.
+    found_e = .false.
+
+    start_st = 'begin '//trim(keyword)
+    end_st = 'end '//trim(keyword)
+
+    do loop = 1, settings%num_lines
+      ins = index(settings%in_data(loop), trim(keyword))
+      if (ins == 0) cycle
+      in = index(settings%in_data(loop), 'begin')
+      if (in == 0 .or. in > 1) cycle
+      line_s = loop
+      if (found_s) then
+        call set_error_input(error, 'Error: Found '//trim(start_st)//' more than once in input file', comm)
+        return
+      endif
+      found_s = .true.
+    end do
+
+    do loop = 1, settings%num_lines
+      ine = index(settings%in_data(loop), trim(keyword))
+      if (ine == 0) cycle
+      in = index(settings%in_data(loop), 'end')
+      if (in == 0 .or. in > 1) cycle
+      line_e = loop
+      if (found_e) then
+        call set_error_input(error, 'Error: Found '//trim(end_st)//' more than once in input file', comm)
+        return
+      endif
+      found_e = .true.
+    end do
+
+    if (found_s .and. .not. found_e) then
+      call set_error_input(error, 'Error: Found '//trim(start_st)//' but no '//trim(end_st)//' in input file', comm)
+      return
+    end if
+
+    if (found_s .and. found_e) then
+      if (line_e <= line_s) then
+        call set_error_input(error, 'Error: '//trim(end_st)//' comes before '//trim(start_st)//' in input file', comm)
+        return
+      endif
+    else
+      return !just not found
+    end if
+
+    counter = 0
+    do loop = line_s + 1, line_e - 1
+
+      counter = counter + 1
+      dummy = settings%in_data(loop)
+      read (dummy, *, err=240, end=240) kpoint_path%labels(counter), (kpoint_path%points(i, counter), i=1, 3)
+    end do
+
+    ! Upper case bands labels (eg, x --> X)
+    if (allocated(kpoint_path%labels)) then
+      do loop = 1, size(kpoint_path%labels)
+        do inner_loop = 1, len(kpoint_path%labels(loop))
+          ic = ichar(kpoint_path%labels(loop) (inner_loop:inner_loop))
+          if ((ic .ge. ichar('a')) .and. (ic .le. ichar('z'))) &
+            kpoint_path%labels(loop) (inner_loop:inner_loop) = char(ic + ichar('Z') - ichar('z'))
+        enddo
+      enddo
+    endif
+
+    settings%in_data(line_s:line_e) (1:maxlen) = ' '
+
+    return
+
+240 call set_error_input(error, 'w90_readwrite_get_keyword_kpath: Problem reading explicit kpath '//trim(dummy), comm)
+    return
+  end subroutine w90_readwrite_get_keyword_explicit_kpath
 
   !================================================!
   subroutine clear_block(settings, keyword, error, comm)
