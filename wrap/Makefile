@@ -23,7 +23,7 @@ wrap: $(WRAPSRC)
 	$(F90WRAP) -m $(PYMOD) -k kind_map $(WRAPSRC)
 
 python: cabort.o
-	f2py -c -m _$(PYMOD) $(F90WRAPEXTRA) -I$(BUILD) f90wrap_*.f90 cabort.o -L.. -l$(DYNLIBEXTRABASE) -l$(DYNLIBBASE)
+	f2py -c -m _$(PYMOD) $(F90WRAPEXTRA) -I$(BUILD) f90wrap_*.f90 cabort.o -L.. -l$(DYNLIBBASE)
 
 # I expected this to only be needed for f2py-f90wrap, but seems to be wrong
 cabort.o: cabort.c

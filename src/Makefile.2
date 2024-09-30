@@ -56,9 +56,6 @@ w90spn2spn: ../../w90spn2spn.x
 $(LIBRARYV2): $(OBJS)
 	$(AR) $(ARFLAGS) $(LIBRARYV2) $(OBJS)
 
-$(LIBRARYV2EXTRA): library_extra.o
-	$(AR) $(ARFLAGS) $(LIBRARYV2EXTRA) library_extra.o
-
 post: POSTOPTS = $(TEMP1)
 post: COMPILER = $(TEMP2)
 post: mpi_test ../../postw90.x
