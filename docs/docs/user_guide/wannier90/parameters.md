@@ -92,6 +92,8 @@ types are represented by, I for a integer, R for a real number, P for a
 physical value, L for a logical value and S for a text string.
 
 ### Wannierise Parameters
+
+<!-- markdownlint-disable MD013 -->
 {{ read_csv('docs/parameters/w90-wannierise-parameters.csv', colalign=('left', 'center', 'left')) }}
 <!-- markdownlint-enable MD013 -->
 
