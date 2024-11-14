@@ -1243,7 +1243,7 @@ contains
           write (file_unit, '(a1,29x,a1,38x,a14,37x,a2,14x,a15,14x,a1)') '#', "|", "symmetric part", "||", "asymmetric part", "|"
           write (file_unit, '(11a15)') '# EFERMI(eV)', "omega(eV)", 'xx', 'yy', 'zz', 'xy', 'xz', 'yz', 'x', 'y', 'z'
         else
-          write (file_unit, '(11a15)') '# EFERMI(eV)', "omega(eV)", 'yzx', 'zxy', 'xyz', 'yzy', 'yzz', 'zxz', 'xyy', 'yzz', 'zxx'
+          write (file_unit, '(11a15)') '# EFERMI(eV)', "omega(eV)", 'yzx', 'zxy', 'xyz', 'yzy', 'yzz', 'zxz', 'xyy', 'xyx', 'zxx'
         endif
       else
         write (file_unit, '(11a15)') '# EFERMI(eV)', "omega(eV)", 'xx', 'yy', 'zz', 'xy', 'xz', 'yz', 'zy', 'xz', 'yx'
