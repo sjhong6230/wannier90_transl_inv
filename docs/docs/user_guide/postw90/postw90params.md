@@ -1216,7 +1216,7 @@ does not denend on $\omega$, the second column is filled by zeros. Data
 is grouped in blocks of the same $\omega$ separated by two blank lines.
 In case of natural optical activity the columns 3 to 11 contain the
 independent components of $\gamma_{abc}$ (antisymmetric in $ab$): $yzx$,
-$zxy$ ,$xyz$, $yzy$, $yzz$, $zxz$, $xyy$, $yzz$ and $zxx$. For tensors
+$zxy$ ,$xyz$, $yzy$, $yzz$, $zxz$, $xyy$, $xyx$ and $zxx$. For tensors
 $C_{ab}$, $D_{ab}$, $\widetilde D_{ab}$, $K_{ab}$ the symmetric and
 antisymmetric components are writted. Thus, the columns 3 to 11 are
 marked as $xx$, $yy$, $zz$, $xy$, $xz$, $yz$, $x$, $y$, $z$, wich
