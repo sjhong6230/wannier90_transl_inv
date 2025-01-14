@@ -833,6 +833,19 @@ not possible if an explicit projection block is not defined).
 
 The default value is `false`.
 
+### `logical :: use_ss_functional`
+
+If `true`, use Stengel-Spaldin spread functional and if `false`,
+use Marzari-Vanderbilt spread functional.
+
+Both functionals converge to the same behavior if infinitely fine grid is used.
+Both of them are translationally invariant,
+but only Stengel-Spaldin functional is size consistent.
+
+For more information, refer to Phys. Rev. B 73, 075121.
+
+The default value is `false`.
+
 ### `integer :: num_guide_cycles`
 
 If `guiding_centres` is set to `true`, then the guiding centres are used
