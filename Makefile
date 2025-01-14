@@ -2,6 +2,9 @@ ifndef ROOTDIR
 ROOTDIR=.
 endif
 
+# include make.inc to determine if (last) build was serial or parallel via def/undef COMMS
+include make.inc
+
 REALMAKEFILE=../Makefile.2
 
 TAR := $(shell if which gnutar 1>/dev/null 2> /dev/null; then echo gnutar; else echo tar; fi )
@@ -205,7 +208,11 @@ test-parallel: w90chk2chk wannier post
 	(cd $(ROOTDIR)/test-suite && ./run_tests --category=par --numprocs=4 )
 
 # Alias
+ifdef COMMS
 tests: test-serial test-parallel
+else
+tests: test-serial
+endif
 
 dist-lite:
 	@(cd $(ROOTDIR) && $(TAR) -cz --transform='s,^\./,wannier90/,' -f wannier90.tar.gz \
