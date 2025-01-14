@@ -32,11 +32,11 @@ SHAREDLIBFLAGS ?=-shared -Wl,-soname,libwannier90.so.4 -fPIC
 
 ## Define the filename
 ifdef USEMPI
-  LIBSUFFIX=mpi
+  LIBSUFFIX=_mpi
 else
-  LIBSUFFIX=serial
+  LIBSUFFIX=
 endif
 
-DYNLIBBASE = wannier90_$(LIBSUFFIX)
-LIBRARYV2 =       ../../libwannier90_$(LIBSUFFIX).a
-DYNLIBRARY =            libwannier90_$(LIBSUFFIX).so.4
+DYNLIBBASE = wannier90$(LIBSUFFIX)
+LIBRARYV2 =  ../../libwannier90$(LIBSUFFIX).a
+DYNLIBRARY =       libwannier90$(LIBSUFFIX).so.4
