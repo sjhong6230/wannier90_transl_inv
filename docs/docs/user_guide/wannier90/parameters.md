@@ -1174,7 +1174,7 @@ begin explicit_kpath
 end explicit_kpath
 ```
 
-and 
+and
 
 ```vi title="Input file"
 begin explicit_kpath_labels
