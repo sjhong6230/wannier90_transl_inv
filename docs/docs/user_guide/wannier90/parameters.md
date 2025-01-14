@@ -1158,6 +1158,33 @@ sections will have the same density of k-points.
 
 The default value for `bands_num_points` is 100.
 
+### explicit_kpath and explicit_kpath_labels
+
+If `explicit_kpath_labels` and `explicit_kpath` are present in the input,
+the band interpolation code will use an explicitly provided list of k-points
+specified by `explicit_kpath`, instead of using `bands_num_points` to automatically
+generate a list of k-points:
+
+```vi title="Input file"
+begin explicit_kpath
+  0.500000 0.500000 0.500000
+  0.450000 0.450000 0.450000
+  0.400000 0.400000 0.400000
+...
+end explicit_kpath
+```
+
+and 
+
+```vi title="Input file"
+begin explicit_kpath_labels
+  L 0.50000 0.50000 0.5000
+  G 0.00000 0.00000 0.0000
+  X 0.50000 0.00000 0.5000
+...
+end explicit_kpath_labels
+```
+
 ### `character(len=20) :: bands_plot_format`
 
 Format in which to plot the interpolated band structure. The valid
