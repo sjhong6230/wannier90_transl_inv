@@ -149,7 +149,7 @@ int main(int argc, char* argv[]) {
         w90_wannierise_c(w90glob, ierr);
         assert(ierr == 0);
 
-        double wannier_ctr[nw];
+        double wannier_ctr[nw][3];
         double wannier_spr[nw];
         w90_get_centres_c(w90glob, wannier_ctr);
         w90_get_spreads_c(w90glob, wannier_spr);
