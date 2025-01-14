@@ -261,9 +261,9 @@ contains
 
     if (print_output%iprint > 0) then
       if (kmesh_input%higher_order_nearest_shells) then
-        write (stdout, '(1x,a)', advance='no') '| The following shells are used: '
-      else
         write (stdout, '(1x,a)', advance='no') '| The following shells and their multiples are used: '
+      else
+        write (stdout, '(1x,a)', advance='no') '| The following shells are used: '
       endif
       do ndnn = 1, kmesh_input%num_shells
         if (ndnn .eq. kmesh_input%num_shells) then
