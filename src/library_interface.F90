@@ -304,7 +304,7 @@ contains
 
     ierr = 0
 
-    if (.not. valid_communicator(common_data%comm)) then ! always true of MPI not defined (see comms.F90)
+    if (.not. valid_communicator(common_data%comm)) then ! when MPI is not defined, valid_communicator returns true (see comms.F90)
       ! this is a problem: how do we exit using the parallel error handler when the communicator is unknown?
       write (istderr, *) ' Error: parallel Wannier90 library invoked with invalid communicator, exiting.  Use w90_set_comm()!'
       ierr = code_mpi
@@ -563,7 +563,6 @@ contains
         return
       endif
 
-      !fixme, aliasing of input and output m_matrix_local here (resizing nb,nb -> nw,nw)
       call setup_m_loc(common_data%kmesh_info, common_data%print_output, common_data%m_matrix_local, &
                        common_data%m_matrix_local, common_data%u_matrix, common_data%num_bands, &
                        common_data%num_kpts, common_data%num_wann, common_data%timer, &
