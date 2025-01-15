@@ -95,7 +95,7 @@ program ok
   call w90_set_option(w90main, 'distk', distk)
   call w90_set_option(w90main, 'dis_win_max', 24.d0)
   call w90_set_option(w90main, 'exclude_bands', exclude)
-  call w90_set_option(w90main, 'iprint', 0) ! disable printout 
+  call w90_set_option(w90main, 'iprint', 0) ! disable printout
   call w90_set_option(w90main, 'num_iter', 1000)
   call w90_set_option(w90main, 'num_print_cycles', 40)
 
