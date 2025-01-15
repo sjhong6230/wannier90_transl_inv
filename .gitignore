@@ -1,6 +1,6 @@
 .DS_Store
 libwannier*.a
-libwannier*.so
+libwannier*.so.*
 make.inc
 postw90.x
 w90chk2chk.x
