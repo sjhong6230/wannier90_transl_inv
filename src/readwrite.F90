@@ -2434,11 +2434,8 @@ contains
             return
           endif
         endif
-
       end if
 
-      call comms_bcast(u_matrix_opt(1, 1, 1), num_bands*num_wann*num_kpts, error, comm)
-      if (allocated(error)) return
       call comms_bcast(dis_manifold%lwindow(1, 1), num_bands*num_kpts, error, comm)
       if (allocated(error)) return
       call comms_bcast(dis_manifold%ndimwin(1), num_kpts, error, comm)
@@ -2446,6 +2443,9 @@ contains
       call comms_bcast(omega_invariant, 1, error, comm)
       if (allocated(error)) return
     end if
+
+    call comms_bcast(u_matrix_opt(1, 1, 1), num_bands*num_wann*num_kpts, error, comm)
+    if (allocated(error)) return
     call comms_bcast(wannier_data%centres(1, 1), 3*num_wann, error, comm)
     if (allocated(error)) return
     call comms_bcast(wannier_data%spreads(1), num_wann, error, comm)
