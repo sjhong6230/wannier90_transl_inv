@@ -32,7 +32,6 @@ module w90_hamiltonian
   public :: hamiltonian_get_hr
   public :: hamiltonian_setup
   public :: hamiltonian_write_hr
-  public :: hamiltonian_write_rmn
   public :: hamiltonian_write_tb
 
 contains
@@ -851,90 +850,6 @@ contains
     return
 
   end subroutine hamiltonian_wigner_seitz
-
-  !================================================!
-  subroutine hamiltonian_write_rmn(kmesh_info, m_matrix, kpt_latt, irvec, nrpts, num_kpts, &
-                                   num_wann, seedname, error, comm)
-    !================================================!
-    !
-    !! Write out the matrix elements of r
-    !
-    !================================================!
-
-    use w90_constants, only: twopi, cmplx_i
-    use w90_io, only: io_date
-    use w90_types, only: kmesh_info_type
-
-    implicit none
-
-    ! arguments
-    type(kmesh_info_type), intent(in) :: kmesh_info
-    type(w90_error_type), allocatable, intent(out) :: error
-    type(w90_comm_type), intent(in) :: comm
-
-    integer, intent(inout) :: nrpts
-    integer, intent(inout) :: irvec(:, :)
-    integer, intent(in)    :: num_wann
-    integer, intent(in)    :: num_kpts
-    real(kind=dp), intent(in)      :: kpt_latt(:, :)
-    complex(kind=dp), intent(in)   :: m_matrix(:, :, :, :)
-    character(len=50), intent(in)  :: seedname
-
-    ! local variables
-    integer :: loop_rpt, m, n, nkp, ind, nn, file_unit, ierr
-    real(kind=dp) :: rdotk
-    complex(kind=dp) :: fac
-    complex(kind=dp) :: position(3)
-    character(len=33) :: header
-    character(len=9)  :: cdate, ctime
-
-    open (newunit=file_unit, file=trim(seedname)//'_r.dat', form='formatted', status='unknown', &
-          iostat=ierr)
-    if (ierr /= 0) then
-      call set_error_file(error, 'Error: hamiltonian_write_rmn: problem opening file '//trim(seedname)//'_r', comm)
-      return
-    endif
-
-    call io_date(cdate, ctime)
-
-    header = 'written on '//cdate//' at '//ctime
-    write (file_unit, *) header ! Date and time
-    write (file_unit, *) num_wann
-    write (file_unit, *) nrpts
-
-    do loop_rpt = 1, nrpts
-      do m = 1, num_wann
-        do n = 1, num_wann
-          position(:) = 0._dp
-          do nkp = 1, num_kpts
-            rdotk = twopi*dot_product(kpt_latt(:, nkp), real(irvec(:, loop_rpt), dp))
-            fac = exp(-cmplx_i*rdotk)/real(num_kpts, dp)
-            do ind = 1, 3
-              do nn = 1, kmesh_info%nntot
-                if (m .eq. n) then
-                  ! For loop_rpt==rpt_origin, this reduces to
-                  ! Eq.(32) of Marzari and Vanderbilt PRB 56,
-                  ! 12847 (1997). Otherwise, is is Eq.(44)
-                  ! Wang, Yates, Souza and Vanderbilt PRB 74,
-                  ! 195118 (2006), modified according to
-                  ! Eqs.(27,29) of Marzari and Vanderbilt
-                  position(ind) = position(ind) - kmesh_info%wb(nn)*kmesh_info%bk(ind, nn, nkp) &
-                                  *aimag(log(m_matrix(n, m, nn, nkp)))*fac
-                else
-                  ! Eq.(44) Wang, Yates, Souza and Vanderbilt PRB 74, 195118 (2006)
-                  position(ind) = position(ind) + cmplx_i*kmesh_info%wb(nn) &
-                                  *kmesh_info%bk(ind, nn, nkp)*m_matrix(n, m, nn, nkp)*fac
-                endif
-              end do
-            end do
-          end do
-          write (file_unit, '(5I5,6F12.6)') irvec(:, loop_rpt), n, m, position(:)
-        end do
-      end do
-    end do
-
-    close (file_unit)
-  end subroutine hamiltonian_write_rmn
 
   !================================================!
   subroutine hamiltonian_write_tb(ham_logical, kmesh_info, ham_r, m_matrix, kpt_latt, &

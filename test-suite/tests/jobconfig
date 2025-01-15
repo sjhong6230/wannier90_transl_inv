@@ -74,6 +74,12 @@ program = WANNIER90_WOUT_OK
 inputs_args = ('silicon.win', '')
 output = silicon.wout
 
+# Silicon, Stengel-Spaldin functional
+[testw90_example36/]
+program = WANNIER90_WOUT_OK
+inputs_args = ('silicon.win', '')
+output = silicon.wout
+
 # Test for the nnkpt file
 [testw90_nnkpt1/]
 program = WANNIER90_NNKP_OK
@@ -118,6 +124,13 @@ output = wannier.nnkp
 
 # Test for the wannier position matrix elements and spreads using higher-order finite difference
 [testw90_knbo3_higher/]
+program = WANNIER90_WOUT_OK
+inputs_args = ('knbo3.win', '')
+output = knbo3.wout
+
+# Test for the wannier position matrix elements and spreads using higher-order finite difference
+# with Stengel-Spaldin Functional and guiding_centres
+[testw90_knbo3_higher_stengel_spaldin/]
 program = WANNIER90_WOUT_OK
 inputs_args = ('knbo3.win', '')
 output = knbo3.wout
@@ -464,6 +477,12 @@ output = Pt-kslice-shc.dat
 program = WANNIER90_DISENTANGLEMENT_SAWFS
 inputs_args = ('H3S.win', '')
 output = H3S.wout
+
+# Diamond, valence states - test of the R_mn printout
+[testw90_rmn]
+program = WANNIER90_RMN_OK
+inputs_args = ('diamond.win', '')
+output = diamond_r.dat
 
 # Test of k.p coefficients for GaAs
 [testpostw90_gaas_kdotp/]
