@@ -224,6 +224,7 @@ contains
 
     ! local variables
     logical :: has_kpath
+    logical :: has_explicit_kpath
     integer :: num_exclude_bands
     logical :: found_fermi_energy
     logical :: disentanglement
@@ -292,11 +293,16 @@ contains
                                     error, comm)
       if (allocated(error)) return
 
+      if (.not. has_kpath) then
+        call w90_readwrite_read_explicit_kpath(settings, kpoint_path, has_explicit_kpath, w90_calculation%bands_plot, &
+                                               bohr, error, comm)
+        if (allocated(error)) return
+      endif
       call w90_wannier90_readwrite_read_plot_info(settings, wvfn_read, error, comm)
       if (allocated(error)) return
 
       call w90_wannier90_readwrite_read_band_plot(settings, band_plot, num_wann, has_kpath, &
-                                                  w90_calculation%bands_plot, error, comm)
+                                                  has_explicit_kpath, w90_calculation%bands_plot, error, comm)
       if (allocated(error)) return
 
       call w90_wannier90_readwrite_read_wann_plot(settings, wann_plot, num_wann, &
@@ -1079,7 +1085,7 @@ contains
 
   !================================================!
   subroutine w90_wannier90_readwrite_read_band_plot(settings, band_plot, num_wann, has_kpath, &
-                                                    bands_plot, error, comm)
+                                                    has_explicit_kpath, bands_plot, error, comm)
     !================================================!
     ! Plotting
     !================================================!
@@ -1089,6 +1095,7 @@ contains
     integer, intent(in) :: num_wann
     logical, intent(in) :: bands_plot
     logical, intent(in) :: has_kpath
+    logical, intent(in) :: has_explicit_kpath
     type(band_plot_type), intent(inout) :: band_plot
     type(settings_type), intent(inout) :: settings
     type(w90_comm_type), intent(in) :: comm
@@ -1127,8 +1134,9 @@ contains
       endif
     endif
 
-    if (.not. has_kpath .and. bands_plot) then
-      call set_error_input(error, 'A bandstructure plot has been requested but there is no kpoint_path block', comm)
+    if ((.not. has_kpath) .and. (.not. has_explicit_kpath) .and. bands_plot) then
+      call set_error_input(error, &
+                           'A bandstructure plot has been requested but there is no kpoint_path or explicit_kpath block', comm)
       return
     endif
 
@@ -2086,10 +2094,16 @@ contains
           write (stdout, '(1x,a46,10x,L8,13x,a1)') '|  Plotting interpolated bandstructure       :', w90_calculation%bands_plot, '|'
           bands_num_spec_points = 0
           if (allocated(kpoint_path%labels)) bands_num_spec_points = size(kpoint_path%labels)
-          write (stdout, '(1x,a46,10x,I8,13x,a1)') '|   Number of K-path sections                :', &
-            bands_num_spec_points/2, '|'
-          write (stdout, '(1x,a46,10x,I8,13x,a1)') '|   Divisions along first K-path section     :', &
-            kpoint_path%num_points_first_segment, '|'
+          if (kpoint_path%bands_kpt_explicit) then
+            write (stdout, '(1x,a46,10x,I8,13x,a1)') '|   Number of high-symmetry points           :', bands_num_spec_points, '|'
+            write (stdout, '(1x,a46,10x,I8,13x,a1)') '|   Total number of points along K-path      :', &
+              size(kpoint_path%bands_kpt_frac, 2), '|'
+          else
+            write (stdout, '(1x,a46,10x,I8,13x,a1)') '|   Number of K-path sections                :', &
+              bands_num_spec_points/2, '|'
+            write (stdout, '(1x,a46,10x,I8,13x,a1)') '|   Divisions along first K-path section     :', &
+              kpoint_path%num_points_first_segment, '|'
+          end if
           write (stdout, '(1x,a46,10x,a8,13x,a1)') '|   Output format                            :', &
             trim(band_plot%format), '|'
           write (stdout, '(1x,a46,10x,a8,13x,a1)') '|   Output mode                              :', &
@@ -2111,15 +2125,26 @@ contains
               trim(real_space_ham%dist_cutoff_mode), '|'
           endif
           write (stdout, '(1x,a78)') '*----------------------------------------------------------------------------*'
-          write (stdout, '(1x,a78)') '|   K-space path sections:                                                   |'
+          if (kpoint_path%bands_kpt_explicit) then
+            write (stdout, '(1x,a78)') '|   K-space path high symmetry points:                                       |'
+          else
+            write (stdout, '(1x,a78)') '|   K-space path sections:                                                   |'
+          end if
           if (bands_num_spec_points == 0) then
             write (stdout, '(1x,a78)') '|     None defined                                                           |'
           else
-            do loop = 1, bands_num_spec_points, 2
-              write (stdout, '(1x,a10,1x,a5,1x,3F7.3,5x,a3,1x,a5,1x,3F7.3,3x,a1)') '|    From:', &
-                kpoint_path%labels(loop), (kpoint_path%points(i, loop), i=1, 3), &
-                'To:', kpoint_path%labels(loop + 1), (kpoint_path%points(i, loop + 1), i=1, 3), '|'
-            end do
+            if (kpoint_path%bands_kpt_explicit) then
+              do loop = 1, bands_num_spec_points
+                write (stdout, '(1x,a5,a5,1x,3F7.3,a46)') '|    ', kpoint_path%labels(loop), &
+                  (kpoint_path%points(i, loop), i=1, 3), '                                             |'
+              end do
+            else
+              do loop = 1, bands_num_spec_points, 2
+                write (stdout, '(1x,a10,1x,a5,1x,3F7.3,5x,a3,1x,a5,1x,3F7.3,3x,a1)') '|    From:', &
+                  kpoint_path%labels(loop), (kpoint_path%points(i, loop), i=1, 3), &
+                  'To:', kpoint_path%labels(loop + 1), (kpoint_path%points(i, loop + 1), i=1, 3), '|'
+              end do
+            end if
           end if
           write (stdout, '(1x,a78)') '*----------------------------------------------------------------------------*'
         end if

@@ -392,11 +392,12 @@ contains
     integer              :: loop_spts, total_pts, loop_i, nkp, ideg
     integer              :: num_paths, num_spts, ierr
     integer              :: bndunit, gnuunit, loop_w, loop_p
-    integer              :: kpath_pts(bands_num_spec_points/2)
+    integer, allocatable :: kpath_pts(:)
     integer, allocatable :: idx_special_points(:)
+    integer, allocatable :: label_idx_special_points(:)
 
-    real(kind=dp)              :: kpath_len(bands_num_spec_points/2)
     real(kind=dp)              :: rdotk, vec(3), emin, emax, time0
+    real(kind=dp), allocatable :: kpath_len(:)
     real(kind=dp), allocatable :: rwork(:)
     real(kind=dp), allocatable :: xval(:)
     real(kind=dp), allocatable :: eig_int(:, :), plot_kpoint(:, :)
@@ -411,7 +412,7 @@ contains
     complex(kind=dp), allocatable :: U_int(:, :)
     complex(kind=dp), allocatable :: cwork(:)
 
-    logical :: kpath_print_first_point(bands_num_spec_points/2)
+    logical, allocatable :: kpath_print_first_point(:)
 
     character(len=20), allocatable :: glabel(:)
     character(len=10), allocatable :: xlabel(:)
@@ -481,62 +482,93 @@ contains
       return
     endif
 
-    allocate (idx_special_points(bands_num_spec_points), stat=ierr)
-    if (ierr /= 0) then
-      call set_error_alloc(error, 'Error in allocating idx_special_points in plot_interpolate_bands', comm)
-      return
-    endif
-    allocate (xval_special_points(bands_num_spec_points), stat=ierr)
-    if (ierr /= 0) then
-      call set_error_alloc(error, 'Error in allocating xval_special_points in plot_interpolate_bands', comm)
-      return
-    endif
-    idx_special_points = -1
-    xval_special_points = -1._dp
+    if (.not. kpoint_path%bands_kpt_explicit) then
+      allocate (kpath_len(bands_num_spec_points/2), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error in allocating kpath_len in plot_interpolate_bands', comm)
+        return
+      endif
+      allocate (kpath_pts(bands_num_spec_points/2), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error in allocating kpath_pts in plot_interpolate_bands', comm)
+        return
+      endif
+      allocate (kpath_print_first_point(bands_num_spec_points/2), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error in allocating kpath_print_first_point in plot_interpolate_bands', comm)
+        return
+      endif
+      allocate (idx_special_points(bands_num_spec_points), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error in allocating idx_special_points in plot_interpolate_bands', comm)
+        return
+      endif
+      allocate (xval_special_points(bands_num_spec_points), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error in allocating xval_special_points in plot_interpolate_bands', comm)
+        return
+      endif
+      idx_special_points = -1
+      xval_special_points = -1._dp
+    end if
     !
     ! Work out how many points in the total path and the positions of the special points
     !
-    num_paths = bands_num_spec_points/2
+    if (kpoint_path%bands_kpt_explicit) then
+      total_pts = size(kpoint_path%bands_kpt_frac, 2)
+      ! Count the total number of special points
+      num_spts = 0
+      do i = 1, total_pts
+        do j = 1, bands_num_spec_points
+          if (sum((kpoint_path%bands_kpt_frac(:, i) - kpoint_path%points(:, j))**2) <= 1.e-6) then
+            num_spts = num_spts + 1
+            exit
+          end if
+        end do
+      end do
+    else
+      num_paths = bands_num_spec_points/2
 
-    kpath_print_first_point = .false.
+      kpath_print_first_point = .false.
 
-    ! Loop over paths, set to False print_first_point if the starting point
-    ! is the same as the ending point of the previous path.
-    ! I skip the first path for which I always want to print the first point.
-    kpath_print_first_point(1) = .true.
-    do i = 2, num_paths
-      ! If either the coordinates are different or the label is different, compute again the point
-      ! (it will end up at the same x coordinate)
-      if ((SUM((kpoint_path%points(:, (i - 1)*2) - &
-                kpoint_path%points(:, (i - 1)*2 + 1))**2) > 1.e-6) .or. &
-          (TRIM(kpoint_path%labels((i - 1)*2)) .ne. &
-           TRIM(kpoint_path%labels((i - 1)*2 + 1)))) then
-        kpath_print_first_point(i) = .true.
-      end if
-    enddo
+      ! Loop over paths, set to False print_first_point if the starting point
+      ! is the same as the ending point of the previous path.
+      ! I skip the first path for which I always want to print the first point.
+      kpath_print_first_point(1) = .true.
+      do i = 2, num_paths
+        ! If either the coordinates are different or the label is different, compute again the point
+        ! (it will end up at the same x coordinate)
+        if ((SUM((kpoint_path%points(:, (i - 1)*2) - &
+                  kpoint_path%points(:, (i - 1)*2 + 1))**2) > 1.e-6) .or. &
+            (TRIM(kpoint_path%labels((i - 1)*2)) .ne. &
+             TRIM(kpoint_path%labels((i - 1)*2 + 1)))) then
+          kpath_print_first_point(i) = .true.
+        end if
+      enddo
 
-    ! Count the total number of special points
-    num_spts = num_paths
-    do i = 1, num_paths
-      if (kpath_print_first_point(i)) num_spts = num_spts + 1
-    end do
+      ! Count the total number of special points
+      num_spts = num_paths
+      do i = 1, num_paths
+        if (kpath_print_first_point(i)) num_spts = num_spts + 1
+      end do
 
-    do loop_spts = 1, num_paths
-      vec = kpoint_path%points(:, 2*loop_spts) - kpoint_path%points(:, 2*loop_spts - 1)
-      kpath_len(loop_spts) = sqrt(dot_product(vec, (matmul(recip_metric, vec))))
-      if (loop_spts == 1) then
-        kpath_pts(loop_spts) = kpoint_path%num_points_first_segment
-      else
-        kpath_pts(loop_spts) = nint(real(kpoint_path%num_points_first_segment, dp) &
-                                    *kpath_len(loop_spts)/kpath_len(1))
-        ! At least 1 point
-        !if (kpath_pts(loop_spts) .eq. 0) kpath_pts(loop_spts) = 1
-      end if
-    end do
-    total_pts = sum(kpath_pts)
-    do i = 1, num_paths
-      if (kpath_print_first_point(i)) total_pts = total_pts + 1
-    end do
+      do loop_spts = 1, num_paths
+        vec = kpoint_path%points(:, 2*loop_spts) - kpoint_path%points(:, 2*loop_spts - 1)
+        kpath_len(loop_spts) = sqrt(dot_product(vec, (matmul(recip_metric, vec))))
+        if (loop_spts == 1) then
+          kpath_pts(loop_spts) = kpoint_path%num_points_first_segment
+        else
+          kpath_pts(loop_spts) = nint(real(kpoint_path%num_points_first_segment, dp) &
+                                      *kpath_len(loop_spts)/kpath_len(1))
+          ! At least 1 point
+          !if (kpath_pts(loop_spts) .eq. 0) kpath_pts(loop_spts) = 1
+        end if
+      end do
+      total_pts = sum(kpath_pts)
+      do i = 1, num_paths
+        if (kpath_print_first_point(i)) total_pts = total_pts + 1
+      end do
+    end if
 
     allocate (plot_kpoint(3, total_pts), stat=ierr)
     if (ierr /= 0) then
@@ -560,7 +592,7 @@ contains
     endif
     allocate (glabel(num_spts), stat=ierr)
     if (ierr /= 0) then
-      call set_error_alloc(error, 'Error in allocating num_spts in plot_interpolate_bands', comm)
+      call set_error_alloc(error, 'Error in allocating glabel in plot_interpolate_bands', comm)
       return
     endif
     allocate (xlabel(num_spts), stat=ierr)
@@ -577,46 +609,92 @@ contains
     !
     ! Find the position of each kpoint in the path
     !
-    counter = 0
-    do loop_spts = 1, num_paths
-      if (kpath_print_first_point(loop_spts)) then
-        counter = counter + 1
-        if (counter == 1) then
-          xval(counter) = 0.0_dp
-        else
-          ! If we are printing the first point in a path,
-          ! It means that the coordinate did not change (otherwise
-          ! we would not be printing it). Therefore I do not move
-          ! on the x axis, there was a jump in the path here.
-          xval(counter) = xval(counter - 1)
-        endif
-        plot_kpoint(:, counter) = kpoint_path%points(:, 2*loop_spts - 1)
-
-        idx_special_points(2*loop_spts - 1) = counter
-        xval_special_points(2*loop_spts - 1) = xval(counter)
-      end if
-
-      ! This is looping on all points but the first (1 is the first point
-      ! after the first in the path)
-      do loop_i = 1, kpath_pts(loop_spts)
-        counter = counter + 1
-        ! Set xval, the x position on the path of the current path
-        if (counter == 1) then
-          ! This case should never happen but I keep it in for "safety"
-          xval(counter) = 0.0_dp
-        else
-          xval(counter) = xval(counter - 1) + kpath_len(loop_spts)/real(kpath_pts(loop_spts), dp)
-        endif
-        plot_kpoint(:, counter) = kpoint_path%points(:, 2*loop_spts - 1) + &
-                                  (kpoint_path%points(:, 2*loop_spts) &
-                                   - kpoint_path%points(:, 2*loop_spts - 1))* &
-                                  (real(loop_i, dp)/real(kpath_pts(loop_spts), dp))
+    if (kpoint_path%bands_kpt_explicit) then
+      allocate (idx_special_points(num_spts), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error in allocating idx_special_points in plot_interpolate_bands', comm)
+        return
+      endif
+      allocate (xval_special_points(num_spts), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error in allocating xval_special_points in plot_interpolate_bands', comm)
+        return
+      endif
+      idx_special_points = -1
+      xval_special_points = -1._dp
+      allocate (label_idx_special_points(num_spts), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error in allocating label_idx_special_points in plot_interpolate_bands', comm)
+        return
+      endif
+      plot_kpoint(:, :) = kpoint_path%bands_kpt_frac(:, :)
+      xval = 0.0_dp
+      counter = 0
+      do i = 1, total_pts
+        if (i > 1) then
+          vec = plot_kpoint(:, i) - plot_kpoint(:, i - 1)
+          xval(i) = xval(i - 1) + sqrt(dot_product(vec, (matmul(recip_metric, vec))))
+        end if
+        do j = 1, bands_num_spec_points
+          if (sum((kpoint_path%bands_kpt_frac(:, i) - kpoint_path%points(:, j))**2) <= 1.e-6) then
+            counter = counter + 1
+            idx_special_points(counter) = i
+            label_idx_special_points(counter) = j
+            xval_special_points(counter) = xval(i)
+            if (counter > 1) then
+              if (idx_special_points(counter) == idx_special_points(counter - 1) + 1) then
+                ! If the two points are consecutive, it means that the x coordinate should be the same
+                xval(i) = xval(i - 1)
+                xval_special_points(counter) = xval(i)
+              end if
+            end if
+            exit
+          end if
+        end do
       end do
-      idx_special_points(2*loop_spts) = counter
-      xval_special_points(2*loop_spts) = xval(counter)
-    end do
-    !xval(total_pts)=sum(kpath_len)
-    plot_kpoint(:, total_pts) = kpoint_path%points(:, bands_num_spec_points)
+
+    else
+      counter = 0
+      do loop_spts = 1, num_paths
+        if (kpath_print_first_point(loop_spts)) then
+          counter = counter + 1
+          if (counter == 1) then
+            xval(counter) = 0.0_dp
+          else
+            ! If we are printing the first point in a path,
+            ! It means that the coordinate did not change (otherwise
+            ! we would not be printing it). Therefore I do not move
+            ! on the x axis, there was a jump in the path here.
+            xval(counter) = xval(counter - 1)
+          endif
+          plot_kpoint(:, counter) = kpoint_path%points(:, 2*loop_spts - 1)
+
+          idx_special_points(2*loop_spts - 1) = counter
+          xval_special_points(2*loop_spts - 1) = xval(counter)
+        end if
+
+        ! This is looping on all points but the first (1 is the first point
+        ! after the first in the path)
+        do loop_i = 1, kpath_pts(loop_spts)
+          counter = counter + 1
+          ! Set xval, the x position on the path of the current path
+          if (counter == 1) then
+            ! This case should never happen but I keep it in for "safety"
+            xval(counter) = 0.0_dp
+          else
+            xval(counter) = xval(counter - 1) + kpath_len(loop_spts)/real(kpath_pts(loop_spts), dp)
+          endif
+          plot_kpoint(:, counter) = kpoint_path%points(:, 2*loop_spts - 1) + &
+                                    (kpoint_path%points(:, 2*loop_spts) &
+                                     - kpoint_path%points(:, 2*loop_spts - 1))* &
+                                    (real(loop_i, dp)/real(kpath_pts(loop_spts), dp))
+        end do
+        idx_special_points(2*loop_spts) = counter
+        xval_special_points(2*loop_spts) = xval(counter)
+      end do
+      !xval(total_pts)=sum(kpath_len)
+      plot_kpoint(:, total_pts) = kpoint_path%points(:, bands_num_spec_points)
+    end if
     !
     ! Write out the kpoints in the path
     !
@@ -631,15 +709,25 @@ contains
       ! Write out information on high-symmetry points in the path
       !
       open (newunit=bndunit, file=trim(seedname)//'_band.labelinfo.dat', form='formatted')
-      do loop_spts = 1, bands_num_spec_points
-        if ((MOD(loop_spts, 2) .eq. 1) .and. &
-            (kpath_print_first_point((loop_spts + 1)/2) .eqv. .false.)) cycle
-        write (bndunit, '(a,3x,I10,3x,4f18.10)') &
-          kpoint_path%labels(loop_spts), &
-          idx_special_points(loop_spts), &
-          xval_special_points(loop_spts), &
-          (plot_kpoint(loop_i, idx_special_points(loop_spts)), loop_i=1, 3)
-      end do
+      if (kpoint_path%bands_kpt_explicit) then
+        do loop_spts = 1, num_spts
+          write (bndunit, '(a,3x,I10,3x,4f18.10)') &
+            kpoint_path%labels(label_idx_special_points(loop_spts)), &
+            idx_special_points(loop_spts), &
+            xval_special_points(loop_spts), &
+            (plot_kpoint(loop_i, idx_special_points(loop_spts)), loop_i=1, 3)
+        end do
+      else
+        do loop_spts = 1, bands_num_spec_points
+          if ((MOD(loop_spts, 2) .eq. 1) .and. &
+              (kpath_print_first_point((loop_spts + 1)/2) .eqv. .false.)) cycle
+          write (bndunit, '(a,3x,I10,3x,4f18.10)') &
+            kpoint_path%labels(loop_spts), &
+            idx_special_points(loop_spts), &
+            xval_special_points(loop_spts), &
+            (plot_kpoint(loop_i, idx_special_points(loop_spts)), loop_i=1, 3)
+        end do
+      end if
       close (bndunit)
     endif ! on_root
     !
@@ -779,7 +867,7 @@ contains
         call plot_interpolate_gnuplot(band_plot, kpoint_path, bands_num_spec_points, num_wann)
       endif
       if (index(band_plot%format, 'xmgr') > 0) then
-        call plot_interpolate_xmgrace(kpoint_path, bands_num_spec_points, num_wann)
+        call plot_interpolate_xmgrace(kpoint_path, bands_num_spec_points, num_wann, error)
       endif
       write (stdout, '(1x,a,f11.3,a)') &
         'Time to calculate interpolated band structure ', io_time() - time0, ' (sec)'
@@ -815,6 +903,14 @@ contains
       deallocate (xval_special_points, stat=ierr)
       if (ierr /= 0) then
         call set_error_dealloc(error, 'Error in deallocating xval_special_points in &
+            &plot_interpolate_bands', comm)
+        return
+      endif
+    endif
+    if (allocated(label_idx_special_points)) then
+      deallocate (label_idx_special_points, stat=ierr)
+      if (ierr /= 0) then
+        call set_error_dealloc(error, 'Error in deallocating label_idx_special_points in &
             &plot_interpolate_bands', comm)
         return
       endif
@@ -1065,24 +1161,48 @@ contains
       enddo
       close (bndunit)
       ! Axis labels
-      glabel(1) = TRIM(kpoint_path%labels(1))
-      do i = 2, num_paths
-        if (kpoint_path%labels(2*(i - 1)) /= kpoint_path%labels(2*(i - 1) + 1)) then
-          glabel(i) = TRIM(kpoint_path%labels(2*(i - 1)))//'|'// &
-                      TRIM(kpoint_path%labels(2*(i - 1) + 1))
-        else
-          glabel(i) = TRIM(kpoint_path%labels(2*(i - 1)))
-        end if
-      end do
-      glabel(num_paths + 1) = TRIM(kpoint_path%labels(2*num_paths))
+      if (kpoint_path%bands_kpt_explicit) then
+        do i = 1, num_spts
+          if (i > 1) then
+            if (idx_special_points(i) .eq. idx_special_points(i - 1) + 1 .and. &
+                kpoint_path%labels(label_idx_special_points(i)) .ne. kpoint_path%labels(label_idx_special_points(i - 1))) then
+              ! If two different point indeces are consecutive, the label should be combined
+              glabel(i) = TRIM(kpoint_path%labels(label_idx_special_points(i - 1)))//'|'// &
+                          TRIM(kpoint_path%labels(label_idx_special_points(i)))
+            end if
+          else
+            glabel(i) = TRIM(kpoint_path%labels(label_idx_special_points(i)))
+          end if
+        end do
+      else
+        glabel(1) = TRIM(kpoint_path%labels(1))
+        do i = 2, num_paths
+          if (kpoint_path%labels(2*(i - 1)) /= kpoint_path%labels(2*(i - 1) + 1)) then
+            glabel(i) = TRIM(kpoint_path%labels(2*(i - 1)))//'|'// &
+                        TRIM(kpoint_path%labels(2*(i - 1) + 1))
+          else
+            glabel(i) = TRIM(kpoint_path%labels(2*(i - 1)))
+          end if
+        end do
+        glabel(num_paths + 1) = TRIM(kpoint_path%labels(2*num_paths))
+      end if
       ! gnu file
       write (gnuunit, 701) xval(total_pts), emin, emax
-      do i = 1, num_paths - 1
-        write (gnuunit, 705) sum(kpath_len(1:i)), emin, sum(kpath_len(1:i)), emax
-      enddo
-      write (gnuunit, 702, advance="no") TRIM(glabel(1)), 0.0_dp, &
-        (TRIM(glabel(i + 1)), sum(kpath_len(1:i)), i=1, bands_num_spec_points/2 - 1)
-      write (gnuunit, 703) TRIM(glabel(1 + bands_num_spec_points/2)), sum(kpath_len(:))
+      if (kpoint_path%bands_kpt_explicit) then
+        do i = 1, num_spts
+          write (gnuunit, 705) xval(idx_special_points(i)), emin, xval(idx_special_points(i)), emax
+        end do
+        write (gnuunit, 702, advance="no") TRIM(glabel(1)), 0.0_dp, &
+          (TRIM(glabel(i)), xval(idx_special_points(i)), i=2, num_spts - 1)
+        write (gnuunit, 703) TRIM(glabel(num_spts)), xval(idx_special_points(num_spts))
+      else
+        do i = 1, num_paths - 1
+          write (gnuunit, 705) sum(kpath_len(1:i)), emin, sum(kpath_len(1:i)), emax
+        enddo
+        write (gnuunit, 702, advance="no") TRIM(glabel(1)), 0.0_dp, &
+          (TRIM(glabel(i + 1)), sum(kpath_len(1:i)), i=1, bands_num_spec_points/2 - 1)
+        write (gnuunit, 703) TRIM(glabel(1 + bands_num_spec_points/2)), sum(kpath_len(:))
+      end if
       write (gnuunit, *) 'plot ', '"'//trim(seedname)//'_band.dat', '"'
       close (gnuunit)
 
@@ -1099,9 +1219,15 @@ contains
         write (gnuunit, '(a)') 'set view 0,0'
         write (gnuunit, '(a,f9.5,a)') 'set xrange [0:', xval(total_pts), ']'
         write (gnuunit, '(a,f9.5,a,f9.5,a)') 'set yrange [', emin, ':', emax, ']'
-        write (gnuunit, 702, advance="no") glabel(1), 0.0_dp, &
-          (glabel(i + 1), sum(kpath_len(1:i)), i=1, bands_num_spec_points/2 - 1)
-        write (gnuunit, 703) glabel(1 + bands_num_spec_points/2), sum(kpath_len(:))
+        if (kpoint_path%bands_kpt_explicit) then
+          write (gnuunit, 702, advance="no") TRIM(glabel(1)), 0.0_dp, &
+            (TRIM(glabel(i)), xval(idx_special_points(i)), i=2, num_spts - 1)
+          write (gnuunit, 703) TRIM(glabel(num_spts)), xval(idx_special_points(num_spts))
+        else
+          write (gnuunit, 702, advance="no") glabel(1), 0.0_dp, &
+            (glabel(i + 1), sum(kpath_len(1:i)), i=1, bands_num_spec_points/2 - 1)
+          write (gnuunit, 703) glabel(1 + bands_num_spec_points/2), sum(kpath_len(:))
+        end if
 
         write (gnuunit, '(a,a,a,a)') 'splot ', '"'//trim(seedname)//'_band.dat', '"', &
           ' u 1:2:3 w p pt 13 palette'
@@ -1119,7 +1245,7 @@ contains
     end subroutine plot_interpolate_gnuplot
 
     !================================================!
-    subroutine plot_interpolate_xmgrace(kpoint_path, bands_num_spec_points, num_wann)
+    subroutine plot_interpolate_xmgrace(kpoint_path, bands_num_spec_points, num_wann, error)
       !================================================!
       !
       !! Plots the interpolated band structure in Xmgrace format
@@ -1128,12 +1254,19 @@ contains
 
       use w90_io, only: io_date
       use w90_types, only: kpoint_path_type
+      use w90_error, only: w90_error_type, set_error_warn
 
       implicit none
 
       type(kpoint_path_type), intent(in) :: kpoint_path
+      type(w90_error_type), allocatable, intent(out) :: error
+
       integer, intent(in) :: num_wann, bands_num_spec_points
       character(len=9) :: cdate, ctime
+
+      if (kpoint_path%bands_kpt_explicit) then
+        call set_error_warn(error, "bands_kpt_explicit not implemented with xmgrace format", comm)
+      end if
 
       call io_date(cdate, ctime)
 
