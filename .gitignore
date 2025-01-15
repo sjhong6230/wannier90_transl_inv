@@ -10,3 +10,5 @@ wannier90.x
 *.x.dSYM
 .vscode
 *.mod
+*.gcno
+*.gcda
