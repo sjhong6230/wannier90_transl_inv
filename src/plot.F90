@@ -63,49 +63,53 @@ contains
     implicit none
 
     ! arguments
-    type(atom_data_type), intent(in)          :: atom_data
-    type(band_plot_type), intent(in)          :: band_plot
-    type(dis_manifold_type), intent(in)       :: dis_manifold
-    type(fermi_surface_plot_type), intent(in) :: fermi_surface_plot
-    type(ham_logical_type), intent(inout)     :: ham_logical
-    type(kmesh_info_type), intent(in)         :: kmesh_info
-    type(kpoint_path_type), intent(in)        :: kpoint_path
-    type(output_file_type), intent(in)        :: output_file
-    type(print_output_type), intent(in)       :: print_output
-    type(real_space_ham_type), intent(inout)  :: real_space_ham
-    type(w90_calculation_type), intent(in)    :: w90_calculation
-    type(w90_comm_type), intent(in)            :: comm
-    type(wannier_data_type), intent(in)       :: wannier_data
-    type(wannier_plot_type), intent(in)       :: wannier_plot
-    type(ws_region_type), intent(in)          :: ws_region
-    type(wvfn_read_type), intent(in)          :: wvfn_read
-    type(timer_list_type), intent(inout) :: timer
+    type(real_space_ham_type), intent(inout) :: real_space_ham
     type(w90_error_type), allocatable, intent(out) :: error
-    type(w90_system_type), intent(in) :: w90_system
+    type(timer_list_type), intent(inout) :: timer
+    type(ham_logical_type), intent(inout) :: ham_logical
 
-    complex(kind=dp), intent(in)                 :: m_matrix(:, :, :, :)
-    complex(kind=dp), intent(in)                 :: u_matrix_opt(:, :, :)
-    complex(kind=dp), intent(in)                 :: u_matrix(:, :, :)
     complex(kind=dp), intent(inout), allocatable :: ham_r(:, :, :)
     complex(kind=dp), intent(inout), allocatable :: ham_k(:, :, :)
 
-    real(kind=dp), intent(in), allocatable    :: fermi_energy_list(:)
-    real(kind=dp), intent(in)                 :: bohr
-    real(kind=dp), intent(in)                 :: eigval(:, :)
-    real(kind=dp), intent(in)                 :: kpt_latt(:, :)
     real(kind=dp), intent(inout), allocatable :: wannier_centres_translated(:, :)
-    real(kind=dp), intent(in)                 :: real_lattice(3, 3)
 
-    integer, intent(in)                 :: mp_grid(3)
-    integer, intent(in)                 :: num_bands
-    integer, intent(in)                 :: num_kpts
-    integer, intent(in)                 :: num_wann
     integer, intent(inout), allocatable :: irvec(:, :)
     integer, intent(inout), allocatable :: ndegen(:)
     integer, intent(inout), allocatable :: shift_vec(:, :)
     integer, intent(inout)              :: nrpts
     integer, intent(inout)              :: rpt_origin
-    integer, intent(in)                 :: stdout
+
+    type(atom_data_type), intent(in) :: atom_data
+    type(band_plot_type), intent(in) :: band_plot
+    type(dis_manifold_type), intent(in) :: dis_manifold
+    type(fermi_surface_plot_type), intent(in) :: fermi_surface_plot
+    type(kmesh_info_type), intent(in) :: kmesh_info
+    type(kpoint_path_type), intent(in) :: kpoint_path
+    type(output_file_type), intent(in) :: output_file
+    type(print_output_type), intent(in) :: print_output
+    type(w90_calculation_type), intent(in) :: w90_calculation
+    type(w90_comm_type), intent(in) :: comm
+    type(w90_system_type), intent(in) :: w90_system
+    type(wannier_data_type), intent(in) :: wannier_data
+    type(wannier_plot_type), intent(in) :: wannier_plot
+    type(ws_region_type), intent(in) :: ws_region
+    type(wvfn_read_type), intent(in) :: wvfn_read
+
+    complex(kind=dp), intent(in) :: m_matrix(:, :, :, :)
+    complex(kind=dp), intent(in) :: u_matrix_opt(:, :, :)
+    complex(kind=dp), intent(in) :: u_matrix(:, :, :)
+
+    real(kind=dp), intent(in), allocatable :: fermi_energy_list(:)
+    real(kind=dp), intent(in) :: bohr
+    real(kind=dp), intent(in) :: eigval(:, :)
+    real(kind=dp), intent(in) :: kpt_latt(:, :)
+    real(kind=dp), intent(in) :: real_lattice(3, 3)
+
+    integer, intent(in) :: mp_grid(3)
+    integer, intent(in) :: num_bands
+    integer, intent(in) :: num_kpts
+    integer, intent(in) :: num_wann
+    integer, intent(in) :: stdout
     integer, intent(in) :: dist_k(:)
 
     character(len=20), intent(in) :: transport_mode
@@ -117,28 +121,19 @@ contains
     ! local variables
     type(ws_distance_type) :: ws_distance
     real(kind=dp) :: recip_lattice(3, 3), volume
-    integer :: nkp, bands_num_spec_points, my_node_id, num_nodes, i
+    integer :: nkp, bands_num_spec_points, my_node_id, i
     logical :: have_gamma
     logical :: on_root = .false.
-    logical :: spinors
 
-    spinors = w90_system%spinors
-
-    num_nodes = mpisize(comm)
     my_node_id = mpirank(comm)
 
     if (my_node_id == 0) on_root = .true.
-
-    if (output_file%svd_omega) then
-      call plot_svd_omega_i(num_wann, num_kpts, kmesh_info, m_matrix, print_output, timer, &
-                            dist_k, error, comm, stdout)
-      if (allocated(error)) return
-    endif
 
     call utility_recip_lattice_base(real_lattice, recip_lattice, volume)
 
     ! setup RS cluster for calculations that need it
     if (output_file%write_hr .or. &
+        output_file%write_hr_diag .or. &
         output_file%write_r2mn .or. &
         output_file%write_rmn .or. &
         output_file%write_tb .or. &
@@ -154,6 +149,7 @@ contains
 
     ! setup RS Hamilton eqn for calculations that need it
     if (output_file%write_hr .or. &
+        output_file%write_hr_diag .or. &
         output_file%write_tb .or. &
         w90_calculation%bands_plot .or. &
         w90_calculation%fermi_surface_plot) then
@@ -174,55 +170,43 @@ contains
                               real_lattice, wannier_data%centres, wannier_centres_translated, &
                               irvec, shift_vec, nrpts, num_bands, num_kpts, num_wann, &
                               have_disentangled, stdout, timer, error, lsitesymmetry, comm)
-      if (allocated(error)) return
 
+      if (allocated(error)) return
     endif
 
     if (on_root) then
       if (print_output%timing_level > 0) call io_stopwatch_start('plot: main', timer)
 
-      ! Print the header only if there is something to plot
-      if (output_file%write_hr .or. &
-          output_file%write_r2mn .or. &
-          output_file%write_rmn .or. &
-          output_file%write_tb .or. &
-          output_file%write_u_matrices .or. &
-          w90_calculation%bands_plot .or. &
-          w90_calculation%fermi_surface_plot .or. &
-          w90_calculation%wannier_plot) then
-        write (stdout, '(1x,a)') '*---------------------------------------------------------------------------*'
-        write (stdout, '(1x,a)') '|                               PLOTTING                                    |'
-        write (stdout, '(1x,a)') '*---------------------------------------------------------------------------*'
-        write (stdout, *)
-      end if
+      if (print_output%iprint > 0) then
+        ! Print the header only if there is something to plot
+        if (output_file%write_hr .or. &
+            output_file%write_r2mn .or. &
+            output_file%write_rmn .or. &
+            output_file%write_tb .or. &
+            output_file%write_u_matrices .or. &
+            w90_calculation%bands_plot .or. &
+            w90_calculation%fermi_surface_plot .or. &
+            w90_calculation%wannier_plot) then
+          write (stdout, '(1x,a)') '*---------------------------------------------------------------------------*'
+          write (stdout, '(1x,a)') '|                               PLOTTING                                    |'
+          write (stdout, '(1x,a)') '*---------------------------------------------------------------------------*'
+          write (stdout, *)
+        endif
+      endif
 
       if (w90_calculation%fermi_surface_plot) then
+        ! plot_fermi_surface can be trivially parallelised--fixme
         call plot_fermi_surface(fermi_energy_list, recip_lattice, fermi_surface_plot, num_wann, &
                                 ham_r, irvec, ndegen, nrpts, print_output%timing_level, stdout, &
                                 seedname, timer, error, comm)
         if (allocated(error)) return
       endif
 
-      if (output_file%write_hr) then
-        call hamiltonian_write_hr(ham_logical, ham_r, irvec, ndegen, nrpts, num_wann, &
-                                  print_output%timing_level, seedname, timer, error, comm)
-        if (allocated(error)) return
-      endif
-
-      if (output_file%write_tb) then
-        call hamiltonian_write_tb(ham_logical, kmesh_info, ham_r, m_matrix, kpt_latt, &
-                                  real_lattice, irvec, ndegen, nrpts, num_kpts, num_wann, &
-                                  print_output%timing_level, seedname, timer, error, comm)
-        if (allocated(error)) return
-      endif
-
       if (output_file%write_hr .or. output_file%write_tb) then
-        if (.not. ws_distance%done) then
-          call ws_translate_dist(ws_distance, ws_region, num_wann, &
-                                 wannier_data%centres, real_lattice, mp_grid, nrpts, irvec, &
-                                 error, comm, force_recompute=.false.)
-          if (allocated(error)) return
-        endif
+        call ws_translate_dist(ws_distance, ws_region, num_wann, &
+                               wannier_data%centres, real_lattice, mp_grid, nrpts, irvec, &
+                               error, comm, force_recompute=.false.)
+        if (allocated(error)) return
 
         call ws_write_vec(ws_distance, nrpts, irvec, num_wann, ws_region%use_ws_distance, &
                           seedname, error, comm)
@@ -230,40 +214,27 @@ contains
       end if
 
       ! calculate and write projection of WFs on original bands in outer window
-      if (have_disentangled .and. output_file%write_proj) then
+      ! only meaningful in disentanglement case (and otherwise lwindow is not available)
+      if (output_file%write_proj .and. num_bands > num_wann) then
         call plot_calc_projection(num_bands, num_wann, num_kpts, u_matrix_opt, eigval, &
                                   dis_manifold%lwindow, print_output%timing_level, &
                                   print_output%iprint, stdout, timer)
         if (allocated(error)) return
       endif
 
-      ! aam: write data required for vdW utility
-      if (output_file%write_vdw_data) then
-        call plot_write_vdw_data(num_wann, wannier_data, real_lattice, u_matrix, u_matrix_opt, &
-                                 have_disentangled, w90_system, error, comm, stdout, seedname)
+      if (output_file%write_bvec) then
+        call plot_bvec(kmesh_info, num_kpts, seedname, error, comm)
         if (allocated(error)) return
       endif
 
-      if (output_file%write_xyz) then
-        call plot_write_xyz(real_space_ham%translate_home_cell, num_wann, wannier_data%centres, &
-                            real_lattice, atom_data, print_output, error, comm, stdout, seedname)
+      if (output_file%write_hr) then
+        ! this is a trivial matrix write; no need to parallelize
+        call hamiltonian_write_hr(ham_r, irvec, ndegen, nrpts, num_wann, &
+                                  print_output%timing_level, seedname, timer, error, comm)
         if (allocated(error)) return
       endif
 
       if (output_file%write_hr_diag) then
-        call hamiltonian_setup(ham_logical, print_output, ws_region, w90_calculation, ham_k, ham_r, &
-                               real_lattice, wannier_centres_translated, irvec, mp_grid, ndegen, &
-                               num_kpts, num_wann, nrpts, rpt_origin, band_plot%mode, stdout, &
-                               timer, error, transport_mode, comm)
-        if (allocated(error)) return
-
-        call hamiltonian_get_hr(atom_data, dis_manifold, ham_logical, real_space_ham, print_output, &
-                                ham_k, ham_r, u_matrix, u_matrix_opt, eigval, kpt_latt, &
-                                real_lattice, wannier_data%centres, wannier_centres_translated, &
-                                irvec, shift_vec, nrpts, num_bands, num_kpts, num_wann, &
-                                have_disentangled, stdout, timer, error, lsitesymmetry, comm)
-        if (allocated(error)) return
-
         if (print_output%iprint > 0) then
           write (stdout, *)
           write (stdout, '(1x,a)') 'On-site Hamiltonian matrix elements'
@@ -275,7 +246,43 @@ contains
           write (stdout, *)
         endif
       endif
+
+      if (output_file%write_u_matrices) then
+        call plot_u_matrices(u_matrix_opt, u_matrix, kpt_latt, dis_manifold, have_disentangled, &
+                             num_wann, num_kpts, num_bands, seedname)
+      endif
+
+      if (output_file%write_vdw_data) then
+        ! aam: write data required for vdW utility
+        call plot_write_vdw_data(num_wann, wannier_data, real_lattice, u_matrix, u_matrix_opt, &
+                                 have_disentangled, w90_system, error, comm, stdout, seedname)
+        if (allocated(error)) return
+      endif
+
+      if (output_file%write_xyz) then
+        call plot_write_xyz(real_space_ham%translate_home_cell, num_wann, wannier_data%centres, &
+                            real_lattice, atom_data, print_output, error, comm, stdout, seedname)
+        if (allocated(error)) return
+      endif
     end if !on_root
+
+    if (w90_calculation%bands_plot) then
+      bands_num_spec_points = 0
+      if (allocated(kpoint_path%labels)) bands_num_spec_points = size(kpoint_path%labels)
+
+      call plot_interpolate_bands(mp_grid, real_lattice, band_plot, kpoint_path, real_space_ham, &
+                                  ws_region, print_output, recip_lattice, num_wann, wannier_data, &
+                                  ham_r, irvec, ndegen, nrpts, wannier_centres_translated, &
+                                  ws_distance, bands_num_spec_points, stdout, seedname, timer, &
+                                  error, comm)
+      if (allocated(error)) return
+    endif
+
+    if (output_file%svd_omega) then
+      call plot_svd_omega_i(num_wann, num_kpts, kmesh_info, m_matrix, print_output, timer, dist_k, &
+                            error, comm, stdout)
+      if (allocated(error)) return
+    endif
 
     if (output_file%write_rmn) then
       ! parallel write_rmn
@@ -290,41 +297,22 @@ contains
       if (allocated(error)) return
     endif
 
-    if (w90_calculation%bands_plot) then
-      bands_num_spec_points = 0
-      if (allocated(kpoint_path%labels)) bands_num_spec_points = size(kpoint_path%labels)
-
-      call plot_interpolate_bands(mp_grid, real_lattice, band_plot, kpoint_path, &
-                                  real_space_ham, ws_region, print_output, recip_lattice, &
-                                  num_wann, wannier_data, ham_r, irvec, ndegen, nrpts, &
-                                  wannier_centres_translated, ws_distance, &
-                                  bands_num_spec_points, stdout, seedname, timer, error, &
-                                  comm)
+    if (output_file%write_tb) then
+      call hamiltonian_write_tb(kmesh_info, ham_r, m_matrix, kpt_latt, real_lattice, irvec, &
+                                ndegen, nrpts, num_kpts, num_wann, print_output%timing_level, &
+                                seedname, timer, dist_k, error, comm)
       if (allocated(error)) return
     endif
 
     if (w90_calculation%wannier_plot) then
       call plot_wannier(wannier_plot, wvfn_read, wannier_data, print_output, u_matrix_opt, &
                         dis_manifold, real_lattice, atom_data, kpt_latt, u_matrix, num_kpts, &
-                        num_bands, num_wann, have_disentangled, w90_system%spinors, bohr, stdout, seedname, &
-                        timer, dist_k, error, comm)
+                        num_bands, num_wann, have_disentangled, w90_system%spinors, bohr, stdout, &
+                        seedname, timer, dist_k, error, comm)
       if (allocated(error)) return
     endif
 
-    if (on_root) then
-      if (output_file%write_bvec) then
-        call plot_bvec(kmesh_info, num_kpts, seedname, error, comm)
-        if (allocated(error)) return
-      endif
-
-      if (output_file%write_u_matrices) then
-        call plot_u_matrices(u_matrix_opt, u_matrix, kpt_latt, dis_manifold, have_disentangled, &
-                             num_wann, num_kpts, num_bands, seedname)
-      endif
-
-      if (print_output%timing_level > 0) call io_stopwatch_stop('plot: main', timer)
-    end if
-
+    if (on_root .and. print_output%timing_level > 0) call io_stopwatch_stop('plot: main', timer)
   end subroutine plot_main
 
   !-----------------------------------------------------------------
@@ -415,11 +403,11 @@ contains
     logical, allocatable :: kpath_print_first_point(:)
 
     character(len=20), allocatable :: glabel(:)
-    character(len=10), allocatable :: xlabel(:)
-    character(len=10), allocatable :: ctemp(:)
+    character(len=20), allocatable :: xlabel(:)
+    character(len=20), allocatable :: ctemp(:)
 
     ! mpi variables
-    integer ::  my_node_id, num_nodes, size_rdist, size_ndeg
+    integer ::  my_node_id, num_nodes
     logical ::  on_root
     integer, allocatable :: counts(:)
     integer, allocatable :: displs(:)
@@ -1923,8 +1911,6 @@ contains
                 end do
               end do
             end do
-            wmod = wmod/sqrt(real(wmod)**2 + aimag(wmod)**2)
-            wann_func(:, :, :, loop_w) = wann_func(:, :, :, loop_w)/wmod
           end do
         endif
       endif
@@ -2553,7 +2539,7 @@ contains
 
     ! local variables
     integer :: loop_rpt, m, n, nkp, ind, nn, file_unit, ierr
-    integer :: num_nodes, my_node_id, nkp_rank
+    integer :: my_node_id, nkp_rank
     ! nkp_rank is the rank-local kpoint index for m_matrix decomposition
     real(kind=dp) :: rdotk
     complex(kind=dp) :: fac
@@ -2562,7 +2548,6 @@ contains
     character(len=9)  :: cdate, ctime
     logical :: on_root = .false.
 
-    num_nodes = mpisize(comm)
     my_node_id = mpirank(comm)
 
     if (my_node_id == 0) on_root = .true.
@@ -3080,9 +3065,6 @@ contains
     if (print_output%timing_level > 1 .and. print_output%iprint > 0) then
       call io_stopwatch_stop('wann: svd_omega_i', timer)
     endif
-
-    return
-
   end subroutine plot_svd_omega_i
 
   !================================================!

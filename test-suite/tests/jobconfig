@@ -518,11 +518,24 @@ inputs_args = ('wannier.win', '')
 output = wannier.werr
 min_nprocs = 2
 
+# Test of DOS for Cu as proxy for checkpoint reading/writing from w90
+[checkpoint1_read/]
+program = POSTW90_DOS_OK
+inputs_args = ('copper.win', '')
+output = copper-dos.dat
+
+# Test of W90 main output; use to setup checkpoint for test above
+[checkpoint0_write/]
+program = WANNIER90_WOUT_OK
+inputs_args = ('copper.win', '')
+output = copper.wout
+
 [categories]
 wannier_only = testw90_*
 postw90_only = testpostw90_*
-all = wannier_only postw90_only
+checkpoint = checkpoint0_write checkpoint1_read
+all = wannier_only postw90_only checkpoint
 # specifying min_procs does not remove par only test from the serial job
 # workaround by specifying different test sets 
-par = wannier_only postw90_only partest*
+par = wannier_only postw90_only partest* checkpoint
 default =  all

@@ -470,7 +470,6 @@ contains
     wannier_data%centres = rave
     wannier_data%spreads = r2ave - rave2
 
-    ! JJ checkme, where is lquad intitialised?  should it be persistent between invocations?
     if (wann_control%lfixstep) lquad = .false.
 
     ncg = 0
@@ -1742,11 +1741,16 @@ contains
         do nn = 1, kmesh_info%nntot
           nkp2 = kmesh_info%nnlist(nkp, nn)
           ! tmp_cdq = cdq^{dagger} . M
-          call utility_zgemm(tmp_cdq, cdq(:, :, nkp), 'C', m_matrix_loc(1:num_wann, 1:num_wann, nn, nkp_loc), 'N', &  !jj fixme
+
+          ! note: m_matrix_loc is dimensioned larger than block copied here
+          ! the striding used here likely incurs some overhead; ideally we should avoid it
+          ! Jerome Jackson Jun 24
+          call utility_zgemm(tmp_cdq, cdq(:, :, nkp), 'C', m_matrix_loc(1:num_wann, 1:num_wann, nn, nkp_loc), 'N', &
                              num_wann)
           ! cmtmp = tmp_cdq . cdq
           call utility_zgemm(cmtmp, tmp_cdq, 'N', cdq(:, :, nkp2), 'N', num_wann)
-          m_matrix_loc(1:num_wann, 1:num_wann, nn, nkp_loc) = cmtmp(:, :) !jj fixme
+          ! note striding
+          m_matrix_loc(1:num_wann, 1:num_wann, nn, nkp_loc) = cmtmp(:, :)
         enddo
       enddo
 
@@ -3068,9 +3072,8 @@ contains
 !~    endif
     u0 = u_matrix
 
-!~    lguide = .false.
     ! guiding centres are not neede for orthorhombic systems
-    if (kmesh_info%nntot .eq. 3) wann_control%guiding_centres%enable = .false. ! fixme, this requires explanation...
+    if (kmesh_info%nntot .eq. 3) wann_control%guiding_centres%enable = .false.
 
     if (wann_control%guiding_centres%enable) then
       do n = 1, num_wann
@@ -3099,18 +3102,13 @@ contains
       irguide = 1
     endif
 
-    !  weight m_matrix first to reduce number of operations
-    !  m_w : weighted real matrix
-    ! m_matrix is only avbl on root, but no mpi here
-    ! jj cleanup this documentation/notes
-    !if (on_root) then
+    ! weight m_matrix first to reduce number of operations
+    ! m_w : weighted real matrix
     do nn = 1, kmesh_info%nntot
       sqwb = sqrt(kmesh_info%wb(nn))
       m_w(:, :, 2*nn - 1) = sqwb*real(m_matrix(1:num_wann, 1:num_wann, nn, 1), dp)
       m_w(:, :, 2*nn) = sqwb*aimag(m_matrix(1:num_wann, 1:num_wann, nn, 1))
     end do
-    !endif
-    !call comms_bcast(m_w, num_wann*num_wann*tnntot, error, comm)
 
     ! calculate initial centers and spread
     call wann_omega_gamma(m_w, csheet, sheet, rave, r2ave, rave2, wann_spread, num_wann, &
@@ -3157,7 +3155,6 @@ contains
     end do
 
     ! main iteration loop
-
     do iter = 1, wann_control%num_iter
 
       lprint = .false.
@@ -3169,17 +3166,6 @@ contains
           (mod(iter, wann_control%num_dump_cycles) .eq. 0)) ldump = .true.
 
       if (lprint .and. print_output%iprint > 0) write (stdout, '(1x,a,i6)') 'Cycle: ', iter
-
-!~       ! initialize rguide as rave for use_bloch_phases
-!~       if ( (iter.gt.num_no_guide_iter) .and. lguide ) then
-!~          rguide(:,:) = rave(:,:)
-!~          lguide = .false.
-!~       endif
-!~       if ( guiding_centres.and.(iter.gt.num_no_guide_iter) &
-!~            .and.(mod(iter,num_guide_cycles).eq.0) ) then
-!~          if(nntot.gt.3) call wann_phases(csheet,sheet,rguide,irguide)
-!~          irguide=1
-!~       endif
 
       if (wann_control%guiding_centres%enable .and. &
           (iter .gt. wann_control%guiding_centres%num_no_guide_iter) &
@@ -3234,7 +3220,8 @@ contains
       omega%total = wann_spread%om_tot
       omega%tilde = wann_spread%om_d + wann_spread%om_od
 
-!JJ      if (ldump) then
+! (Jerome Jackson) Removing checkpoint from WF optimisation loop because benefit is limited
+!      if (ldump) then
 !        uc_rot(:, :) = cmplx(ur_rot(:, :), 0.0_dp, dp)
 !        call utility_zgemm(u_matrix, u0, 'N', uc_rot, 'N', num_wann)
 !        call w90_wannier90_readwrite_write_chkpt('postdis', exclude_bands, wannier_data, &
@@ -3266,6 +3253,7 @@ contains
       sqwb = 1.0_dp/sqrt(kmesh_info%wb(nn))
       m_matrix(1:num_wann, 1:num_wann, nn, 1) = sqwb*cmplx(m_w(:, :, 2*nn - 1), m_w(:, :, 2*nn), dp)
     end do
+
     ! update U
     uc_rot(:, :) = cmplx(ur_rot(:, :), 0.0_dp, dp)
     call utility_zgemm(u_matrix, u0, 'N', uc_rot, 'N', num_wann)
@@ -3288,12 +3276,6 @@ contains
       '       Omega Total  = ', wann_spread%om_tot*print_output%lenconfac**2
     write (stdout, '(1x,a78)') repeat('-', 78)
 
-!    if (output_file%write_xyz) then
-!      call wann_write_xyz(translate_home_cell, num_wann, wannier_data%centres, &
-!                          real_lattice, atom_data, print_output, error, comm, stdout, seedname)
-!      if (allocated(error)) return
-!    endif
-
     if (wann_control%guiding_centres%enable) then
       call wann_phases(csheet, sheet, rguide, irguide, num_wann, kmesh_info, num_kpts, &
                        wann_control%use_ss_functional, m_matrix, rnkb, print_output%timing_level, &
@@ -3305,33 +3287,6 @@ contains
     call wann_check_unitarity(num_kpts, num_wann, u_matrix, print_output%timing_level, &
                               print_output%iprint, stdout, timer, error, comm)
     if (allocated(error)) return
-
-    !JJ
-    ! write extra info regarding omega_invariant
-    !if (print_output%iprint > 2) then
-    !  call wann_svd_omega_i(num_wann, num_kpts, kmesh_info, m_matrix, print_output, timer, &
-    !                        error, comm, stdout)
-    !  if (allocated(error)) return
-    !endif
-    ! write matrix elements <m|r^2|n> to file
-    !if (output_file%write_r2mn) then
-    !  call wann_write_r2mn(num_kpts, num_wann, kmesh_info, m_matrix, error, comm, seedname)
-    !  if (allocated(error)) return
-    !endif
-
-    ! calculate and write projection of WFs on original bands in outer window
-    !if (have_disentangled .and. output_file%write_proj) then
-    !  call wann_calc_projection(num_bands, num_wann, num_kpts, u_matrix_opt, eigval, &
-    !                            dis_manifold%lwindow, print_output%timing_level, &
-    !                            print_output%iprint, stdout, timer)
-    !endif
-
-    ! aam: write data required for vdW utility
-    !if (output_file%write_vdw_data) then
-    !  call wann_write_vdw_data(num_wann, wannier_data, real_lattice, u_matrix, u_matrix_opt, &
-    !                           have_disentangled, w90_system, error, comm, stdout, seedname)
-    !  if (allocated(error)) return
-    !endif
 
     ! deallocate sub vars not passed into other subs
     deallocate (cz, stat=ierr)
@@ -3409,11 +3364,8 @@ contains
 
     return
 
-1000 format(2x, 'WF centre and spread', &
-&       i5, 2x, '(', f10.6, ',', f10.6, ',', f10.6, ' )', f15.8)
-
-1001 format(2x, 'Sum of centres and spreads', &
-&       1x, '(', f10.6, ',', f10.6, ',', f10.6, ' )', f15.8)
+1000 format(2x, 'WF centre and spread', i5, 2x, '(', f10.6, ',', f10.6, ',', f10.6, ' )', f15.8)
+1001 format(2x, 'Sum of centres and spreads', 1x, '(', f10.6, ',', f10.6, ',', f10.6, ' )', f15.8)
 
   contains
 
