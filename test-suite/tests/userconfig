@@ -100,10 +100,11 @@ tolerance = (  (1.0e-6, 5.0e-6, 'bandpath'),
 [POSTW90_CURVDAT_OK]
 exe = ../../postw90.x
 extract_fn = tools parsers.parse_curv_dat.parse
+# relative error not helpful for e-20ish values expected
 tolerance = (  (1.0e-6, 5.0e-6, 'bandpath'),
-               (1.0e-4, 1.0e+2, 'bandcurvx'),
-               (1.0e-4, 1.0e+2, 'bandcurvy'),
-               (1.0e-4, 1.0e+2, 'bandcurvz'))
+               (1.0e-6, 1.0e+3, 'bandcurvx'),
+               (1.0e-6, 1.0e+3, 'bandcurvy'),
+               (1.0e-6, 1.0e+3, 'bandcurvz'))
 
 [POSTW90_WPOUT_OK]
 exe = ../../postw90.x
@@ -253,6 +254,13 @@ exe = ../../wannier90.x
 extract_fn = tools parsers.parse_w90_bands_dat.parse
 tolerance = ( (1.0e-6, 1.0e-6, 'kpath'),
               (1.0e-5, 1.0e-5, 'eigval'))
+
+[WANNIER90_BAND_KPT]
+exe = ../../wannier90.x
+extract_fn = tools parsers.parse_w90_band_kpt.parse
+tolerance = ( (1.0e-6, 1.0e-6, 'kpath'),
+              (1.0e-6, 1.0e-6, 'weight'),
+              (1.0e-6, 1.0e-6, 'nkp'))
 
 [user]
 # This is the string (or list of strings) that identifies sets of tests

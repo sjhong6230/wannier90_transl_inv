@@ -274,8 +274,6 @@ module w90_wannier90_types
     logical :: have_ham_k = .false.
     logical :: have_ham_r = .false.
     logical :: have_translated = .false.
-    logical :: hr_written = .false.
-    logical :: tb_written = .false.
     logical :: use_translation = .false.
   end type ham_logical_type
 
