@@ -449,7 +449,7 @@ U_{im}^{\dagger (\mathbf{k})} \langle u_{m\mathbf{k}}^{(\text{H})}
 | u_{n\mathbf{k+b}}^{(\text{H})} \rangle U_{nj}^{(\mathbf{k+b})}
 $$
 
-The default value is `true`.
+The default value is `false`.
 
 ### `logical :: transl_inv_full`
 

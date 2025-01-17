@@ -159,7 +159,7 @@ module w90_postw90_types
     real(kind=dp) :: sc_w_thr = 5.0d0
     logical :: sc_use_eta_corr = .true.
     logical :: wanint_kpoint_file = .false. ! also postw90/spin, postw90/dos, postw90.F90
-    logical :: transl_inv = .true. !also used in postw90/get_oper, postw90/gyrotropic
+    logical :: transl_inv = .false. !also used in postw90/get_oper, postw90/gyrotropic
     logical :: transl_inv_full = .false.
     logical :: guiding_centres = .false.
     real(kind=dp) :: kdotp_kpoint(3) = 0.0_dp
