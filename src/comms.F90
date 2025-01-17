@@ -1904,7 +1904,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_scatterv_cmplx_3(array, localcount, rootglobalarray, counts, displs, &
