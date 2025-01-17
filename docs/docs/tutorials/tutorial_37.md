@@ -61,7 +61,8 @@
 
 7. Do step 6 varying the fermi energy and obtain a graph for the relation
    between orbital magnetization and the fermi energy. Compare the results of
-   `without_translation` and `with_translation` directories for both `transl_inv_full = F` and `transl_inv_full = T`.
+   `without_translation` and `with_translation` directories for both 
+   `transl_inv_full = F` and `transl_inv_full = T`.
 
 ## Further ideas
 

@@ -455,7 +455,8 @@ The default value is `false`.
 
 If `transl_inv_full=true`, the translationally-invariant finite difference
 formula is used for the computation of position and related matrix elements. 
-For example, the naive finite difference formula used in the computation of off-diagonal position matrix elements is
+For example, the naive finite difference formula used in the computation of 
+off-diagonal position matrix elements is
 
 $$
 \mathbf{A}_{ij;\mathbf{R}} = \langle w_{i\mathbf{0}} | \hat{\mathbf{r}} 
