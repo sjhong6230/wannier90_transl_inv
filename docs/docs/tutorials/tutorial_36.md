@@ -6,9 +6,7 @@
     states of Si by minimizing the Marzari-Vanderbilt functional.
     Plot the interpolated bandstructure.*
 
-- Directory: `tutorials/tutorial36/Marzari-Vanderbilt`
-    *Files can be downloaded from
-    [here](https://github.com/wannier-developers/wannier90/tree/develop/tutorials/tutorial36)*
+- Directory: [`tutorial/tutorial36/`](https://github.com/wannier-developers/wannier90/tree/develop/tutorials/tutorial36)
 
 - Input Files
 
@@ -86,9 +84,7 @@
     states of Si by minimizing the Stengel-Spaldin functional.
     Plot the interpolated bandstructure.*
 
-- Directory: `tutorials/tutorial34/Stengel-Spaldin`
-  *Files can be downloaded from 
-  [here](<https://github.com/wannier-developers/wannier90/tree/develop/tutorials/tutorial36>)*
+- Directory: [`tutorial/tutorial36/`](https://github.com/wannier-developers/wannier90/tree/develop/tutorials/tutorial36)
 
 - Input Files
 

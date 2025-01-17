@@ -3,10 +3,7 @@
 - Outline: *Perform Wannier interpolation of orbital magnetization
     using translationally-invariant formulas.*
 
-- Directory: `tutorials/tutorial37/without_translation` 
-    and `tutorials/tutorial37/with_translation`
-    *Files can be downloaded from
-    [here](https://github.com/wannier-developers/wannier90/tree/develop/tutorials/tutorial37)*
+- Directory: [`tutorial/tutorial37/`](https://github.com/wannier-developers/wannier90/tree/develop/tutorials/tutorial37)
 
 - Input Files
 
