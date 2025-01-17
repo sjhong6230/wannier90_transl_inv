@@ -28,6 +28,8 @@ module w90_comms
 #  if !(defined(MPI08) || defined(MPI90) || defined(MPIH))
 #    error "You need to define which MPI interface you are using"
 #  endif
+#else
+#define MPI_COMM_NULL -1
 #endif
 
 #ifdef MPI08
@@ -45,10 +47,10 @@ module w90_comms
 
   private
 
-  integer, parameter :: code_mpi = 4
+  integer, parameter :: code_mpi = 4 ! this is duplicated here to avoid circular dependency with error.F90
 
-  integer, parameter :: mpi_send_tag = 77 !arbitrary
-  integer, parameter :: root_id = 0 !not arbitrary
+  integer, parameter :: mpi_send_tag = 77 ! arbitrary
+  integer, parameter :: root_id = 0 ! not arbitrary
 
   public :: comms_allreduce  ! reduce data onto all nodes
   public :: comms_array_split
@@ -61,7 +63,9 @@ module w90_comms
   !public :: comms_send       ! send data from one node to another
   public :: mpirank
   public :: mpisize
-  public :: comms_sync_err
+  public :: comms_sync_error
+  public :: valid_communicator
+  !! test whether communicator is initialised; returns true always for serial build
 
   ! versions without error synchronisation, use at own risk
   public :: comms_no_sync_allreduce  ! reduce data onto all nodes
@@ -75,9 +79,9 @@ module w90_comms
 
   type, public :: w90_comm_type
 #ifdef MPI08
-    type(mpi_comm) :: comm ! f08 mpi interface
+    type(mpi_comm) :: comm = MPI_COMM_NULL ! f08 mpi interface
 #else
-    integer :: comm ! f90 mpi or no mpi
+    integer :: comm = MPI_COMM_NULL ! f90 mpi or no mpi
 #endif
   end type
 
@@ -221,6 +225,19 @@ module w90_comms
 
 contains
 
+  logical function valid_communicator(comm)
+    type(w90_comm_type), intent(in) :: comm
+#ifdef MPI
+    if (comm%comm == MPI_COMM_NULL) then
+      valid_communicator = .false.
+    else
+      valid_communicator = .true.
+    endif
+#else
+    valid_communicator = .true.
+#endif
+  end function
+
   ! mpi rank function for convenience
   integer function mpirank(comm)
     type(w90_comm_type), intent(in) :: comm
@@ -244,7 +261,7 @@ contains
   end function
 
   ! synchronise error condition between MPI processess
-  subroutine comms_sync_err(comm, error, ierr)
+  subroutine comms_sync_error(comm, error, ierr)
     implicit none
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(inout) :: error
@@ -256,7 +273,7 @@ contains
     ! you could check mpiierr here, but truly all bets are off in that case
     if (abserr > 0 .and. ierr == 0) call recv_error(error)
 #endif
-  end subroutine comms_sync_err
+  end subroutine comms_sync_error
 
   subroutine comms_array_split(numpoints, counts, displs, comm)
     !! Given an array of size numpoints, we want to split on num_nodes nodes. This function returns
@@ -271,7 +288,7 @@ contains
     !!
     !! one can use the following do loop to run over the needed elements, if the full array is stored
     !! on all nodes:
-    !! do i=displs(my_node_id)+1,displs(my_node_id)+counts(my_node_id)x
+    !! do i=displs(my_node_id)+1,displs(my_node_id)+counts(my_node_id)
     !!
 
     integer, intent(in) :: numpoints  !! Number of elements of the array to be scattered
@@ -1457,7 +1474,7 @@ contains
     type(w90_error_type), allocatable, intent(out) :: error
     type(w90_comm_type), intent(in) :: comm
 
-    call comms_sync_err(comm, error, 0)
+    call comms_sync_error(comm, error, 0)
     if (allocated(error)) return
     ! The barrier is almost redundant since the sync is global, unless DISABLE_ERROR_SYNC defined
     call comms_no_sync_barrier(comm)
@@ -1472,7 +1489,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0)
+    call comms_sync_error(comm, error, 0)
     if (allocated(error)) return
 
     call comms_no_sync_bcast_int(array, size, error, comm)
@@ -1487,7 +1504,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_bcast_real(array, size, error, comm)
@@ -1502,7 +1519,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_bcast_logical(array, size, error, comm)
@@ -1517,7 +1534,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_bcast_char(array, size, error, comm)
@@ -1533,7 +1550,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_bcast_cmplx(array, size, error, comm)
@@ -1549,7 +1566,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_reduce_int(array, size, op, error, comm)
@@ -1566,7 +1583,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_reduce_real(array, size, op, error, comm)
@@ -1583,7 +1600,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_reduce_cmplx(array, size, op, error, comm)
@@ -1600,7 +1617,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_allreduce_real(array, size, op, error, comm)
@@ -1616,7 +1633,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_allreduce_cmplx(array, size, op, error, comm)
@@ -1634,7 +1651,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_gatherv_real_1(array, localcount, rootglobalarray, counts, displs, &
@@ -1653,7 +1670,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_gatherv_real_2(array, localcount, rootglobalarray, counts, displs, &
@@ -1672,7 +1689,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_gatherv_real_3(array, localcount, rootglobalarray, counts, displs, &
@@ -1691,7 +1708,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_gatherv_real_2_3(array, localcount, rootglobalarray, counts, displs, &
@@ -1716,7 +1733,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_gatherv_cmplx_1(array, localcount, rootglobalarray, counts, displs, &
@@ -1735,7 +1752,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_gatherv_cmplx_2(array, localcount, rootglobalarray, counts, displs, &
@@ -1754,7 +1771,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_gatherv_cmplx_3(array, localcount, rootglobalarray, counts, displs, &
@@ -1773,7 +1790,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_gatherv_cmplx_3_4(array, localcount, rootglobalarray, counts, displs, &
@@ -1792,7 +1809,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_gatherv_cmplx_4(array, localcount, rootglobalarray, counts, displs, &
@@ -1811,7 +1828,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_gatherv_logical(array, localcount, rootglobalarray, counts, displs, &
@@ -1830,7 +1847,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_scatterv_real_1(array, localcount, rootglobalarray, counts, displs, &
@@ -1849,7 +1866,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_scatterv_real_2(array, localcount, rootglobalarray, counts, displs, &
@@ -1868,7 +1885,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_scatterv_real_3(array, localcount, rootglobalarray, counts, displs, &
@@ -1906,7 +1923,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_scatterv_cmplx_4(array, localcount, rootglobalarray, counts, displs, &
@@ -1925,7 +1942,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_scatterv_int_1(array, localcount, rootglobalarray, counts, displs, &
@@ -1945,7 +1962,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_scatterv_int_2(array, localcount, rootglobalarray, counts, displs, &
@@ -1965,7 +1982,7 @@ contains
     type(w90_comm_type), intent(in) :: comm
     type(w90_error_type), allocatable, intent(out) :: error
 
-    call comms_sync_err(comm, error, 0) ! sync error state across comm
+    call comms_sync_error(comm, error, 0) ! sync error state across comm
     if (allocated(error)) return
 
     call comms_no_sync_scatterv_int_3(array, localcount, rootglobalarray, counts, displs, &
