@@ -118,7 +118,6 @@ contains
     !
     if (effective_model) then
       HH_R = cmplx_0
-      HH_R_temp = cmplx_0
       if (on_root) then
         write (stdout, '(/a)') ' Reading real-space Hamiltonian from file ' &
           //trim(seedname)//'_HH_R.dat'
@@ -155,7 +154,7 @@ contains
           ! of a simple equality. (This has to do with the way the
           ! Berlijn effective Hamiltonian algorithm is
           ! implemented.)
-          HH_R_temp(j, i, ir) = HH_R_temp(j, i, ir) + cmplx(rdum_real, rdum_imag, kind=dp)
+          HH_R(j, i, ir) = HH_R(j, i, ir) + cmplx(rdum_real, rdum_imag, kind=dp)
           if (new_ir) then
             wigner_seitz%irvec(:, ir) = ivdum(:)
             if (ivdum(1) == 0 .and. ivdum(2) == 0 .and. ivdum(3) == 0) wigner_seitz%rpt_origin = ir
@@ -190,7 +189,7 @@ contains
           return
         endif
       endif
-      call comms_bcast(HH_R_temp(1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts, error, comm)
+      call comms_bcast(HH_R(1, 1, 1), num_wann*num_wann*wigner_seitz%nrpts, error, comm)
       if (allocated(error)) return
       call comms_bcast(wigner_seitz%ndegen(1), wigner_seitz%nrpts, error, comm)
       if (allocated(error)) return
