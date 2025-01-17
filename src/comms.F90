@@ -288,7 +288,7 @@ contains
     !!
     !! one can use the following do loop to run over the needed elements, if the full array is stored
     !! on all nodes:
-    !! do i=displs(my_node_id)+1,displs(my_node_id)+counts(my_node_id)x
+    !! do i=displs(my_node_id)+1,displs(my_node_id)+counts(my_node_id)
     !!
 
     integer, intent(in) :: numpoints  !! Number of elements of the array to be scattered
