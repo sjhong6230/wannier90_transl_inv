@@ -1938,7 +1938,10 @@ contains
             end do
             wmod = wmod/sqrt(real(wmod)**2 + aimag(wmod)**2)
             wann_func(:, :, :, loop_w) = wann_func(:, :, :, loop_w)/wmod
+            write (stdout, '(6x,a,i4,7x,a,f11.6,SP,f11.6,"i")') "Wannier Function Num: ", &
+              wannier_plot%list(loop_w), "Phase Factor = ", 1/wmod
           end do
+          write (stdout, *) ''
           !
           ! Check the 'reality' of the WF
           !
