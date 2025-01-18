@@ -474,12 +474,16 @@ contains
     !
     ! Do everything on root, broadcast AA_R at the end (smaller than S_o)
     !
-    AA_R = cmplx_0
+    if (on_root) then
+      allocate (AA_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3))
+      AA_R = cmplx_0
+    else
+      allocate (AA_q_b(1, 1, 1, 1, 1))
+    endif
     !
     if (on_root) then
       allocate (S_o(num_bands, num_bands))
       allocate (S(num_wann, num_wann))
-      allocate (AA_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3))
       allocate (AA_q_b_diag(num_wann, kmesh_info%nntot, 3))
 
       allocate (num_states(num_kpts))
@@ -841,7 +845,12 @@ contains
       return
     end if
 
-    BB_R = cmplx_0
+    if (on_root) then
+      allocate (BB_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3))
+      BB_R = cmplx_0
+    else
+      allocate (BB_q_b(1, 1, 1, 1, 1))
+    endif
 
     if (on_root) then
 
@@ -850,7 +859,6 @@ contains
         return
       endif
 
-      allocate (BB_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3))
       allocate (S_o(num_bands, num_bands))
       allocate (H_q_qb(num_wann, num_wann))
 
@@ -1142,7 +1150,12 @@ contains
       return
     end if
 
-    CC_R = cmplx_0
+    if (on_root) then
+      allocate (CC_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, kmesh_info%nntot, 3, 3))
+      CC_R = cmplx_0
+    else
+      allocate (CC_q_b(1, 1, 1, 1, 1, 1, 1))
+    endif
 
     if (on_root) then
 
@@ -1151,7 +1164,6 @@ contains
         return
       endif
 
-      allocate (CC_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, kmesh_info%nntot, 3, 3))
       allocate (Ho_qb1_q_qb2(num_bands, num_bands))
       allocate (H_qb1_q_qb2(num_wann, num_wann))
 
@@ -2554,7 +2566,12 @@ contains
       return
     end if
 
-    SBB_R = cmplx_0
+    if (on_root) then
+      allocate (SBB_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3, 3))
+      SBB_R = cmplx_0
+    else
+      allocate (SBB_q_b(1, 1, 1, 1, 1, 1))
+    endif
 
     if (on_root) then
 
@@ -2565,7 +2582,6 @@ contains
 
       allocate (Ho_q_qb2(num_bands, num_bands, 3))
       allocate (H_q_qb2(num_wann, num_wann))
-      allocate (SBB_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3, 3))
 
       allocate (num_states(num_kpts))
 
@@ -2848,7 +2864,12 @@ contains
       return
     end if
 
-    SAA_R = cmplx_0
+    if (on_root) then
+      allocate (SAA_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3, 3))
+      SAA_R = cmplx_0
+    else
+      allocate (SAA_q_b(1, 1, 1, 1, 1, 1))
+    endif
 
     if (on_root) then
 
@@ -2859,7 +2880,6 @@ contains
 
       allocate (Ho_q_qb2(num_bands, num_bands, 3))
       allocate (H_q_qb2(num_wann, num_wann))
-      allocate (SAA_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3, 3))
 
       allocate (num_states(num_kpts))
 
