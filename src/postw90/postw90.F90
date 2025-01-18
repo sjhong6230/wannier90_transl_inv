@@ -312,7 +312,7 @@ program postw90
   if (allocated(error)) call print_error_halt(error, ierr, stdout, stderr, comm)
 
   call kmesh_sort(kmesh_info, num_kpts, error, comm)
-  if (allocated(error)) call prterr(error, ierr, stdout, stderr, comm)
+  if (allocated(error)) call print_error_halt(error, ierr, stdout, stderr, comm)
 
   if (on_root) then
     time2 = io_time()
@@ -411,7 +411,7 @@ program postw90
   call pw90common_wanint_setup(num_wann, verbose, real_lattice, mp_grid, ws_region, ws_distance, &
                                effective_model, ws_vec, wann_data, stdout, seedname, timer, &
                                error, comm)
-  if (allocated(error)) call prterr(error, ierr, stdout, stderr, comm)
+  if (allocated(error)) call print_error_halt(error, ierr, stdout, stderr, comm)
 
   if (on_root) then
     time1 = io_time()
