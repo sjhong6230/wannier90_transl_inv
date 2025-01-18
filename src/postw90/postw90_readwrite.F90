@@ -1005,6 +1005,8 @@ contains
 
     logical :: found, transl_inv_full
 
+    transl_inv_full = .false.
+
     call w90_readwrite_get_keyword(settings, 'shc_freq_scan', found, error, comm, &
                                    l_value=pw90_spin_hall%freq_scan)
     if (allocated(error)) return
