@@ -294,6 +294,18 @@ program = POSTW90_WPOUT_OK
 inputs_args = ('Fe.win', '')
 output = Fe.wpout
 
+# Test of Translation Invariant Computation of Orbital Magnetisation for bcc iron
+[testpostw90_fe_morb_transl_inv/]
+program = POSTW90_WPOUT_OK
+inputs_args = ('Fe.win', '')
+output = Fe.wpout
+
+# Test of Translation Invariant Computation of Orbital Magnetisation for bcc iron with higher order
+[testpostw90_fe_morb_transl_inv_higher/]
+program = POSTW90_WPOUT_OK
+inputs_args = ('Fe.win', '')
+output = Fe.wpout
+
 # Test of AHC plus Orbital Magnetisation for bcc iron
 [testpostw90_fe_morbandahc/]
 program = POSTW90_WPOUT_OK
@@ -471,6 +483,12 @@ output = GaAs-shc-freqscan.dat
 
 # Test of Ryoo's methods of SHC for fcc platinum
 [testpostw90_pt_shc_ryoo/]
+program = POSTW90_SHCFREQDAT_OK
+inputs_args = ('Pt.win', '')
+output = Pt-shc-freqscan.dat
+
+# Test of Translation Invariant Ryoo's methods of SHC for fcc platinum
+[testpostw90_pt_shc_ryoo_transl_inv/]
 program = POSTW90_SHCFREQDAT_OK
 inputs_args = ('Pt.win', '')
 output = Pt-shc-freqscan.dat
