@@ -2699,7 +2699,9 @@ contains
                                 wigner_seitz%crvec_pw90(3, :)*kmesh_info%bk(3, nn2, 1))
 
               phase2 = exp(cmplx_i*phase2)
-      SBB_R(:, :, :, ipol, b) = SBB_R(:, :, :, ipol, b) + SBB_R_b(:, :, :, ipol, b)*spread(spread(phase2, 1, num_wann), 1, num_wann)
+
+              SBB_R(:, :, :, ipol, b) = SBB_R(:, :, :, ipol, b) + &
+                                        SBB_R_b(:, :, :, ipol, b)*spread(spread(phase2, 1, num_wann), 1, num_wann)
             endif
           enddo
         enddo
@@ -2991,7 +2993,9 @@ contains
                                 wigner_seitz%crvec_pw90(3, :)*kmesh_info%bk(3, nn2, 1))
 
               phase2 = exp(cmplx_i*phase2)
-      SAA_R(:, :, :, ipol, b) = SAA_R(:, :, :, ipol, b) + SAA_R_b(:, :, :, ipol, b)*spread(spread(phase2, 1, num_wann), 1, num_wann)
+
+              SAA_R(:, :, :, ipol, b) = SAA_R(:, :, :, ipol, b) + &
+                                        SAA_R_b(:, :, :, ipol, b)*spread(spread(phase2, 1, num_wann), 1, num_wann)
             endif
           enddo
         enddo
