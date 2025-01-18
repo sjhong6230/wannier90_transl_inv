@@ -424,7 +424,7 @@ contains
     complex(kind=dp), intent(in) :: v_matrix(:, :, :)
     complex(kind=dp), allocatable, intent(inout) :: AA_R(:, :, :, :) ! <0n|r|Rm>
     complex(kind=dp), allocatable :: AA_R_temp(:, :, :)
-    complex(kind=dp), allocatable :: AA_R_b(:, :, :, :, :)
+    complex(kind=dp), allocatable :: AA_R_b(:, :, :, :)
 
     logical, intent(in) :: have_disentangled
     character(len=50), intent(in) :: seedname
@@ -473,6 +473,8 @@ contains
     ! reciprocal mesh
     !
     ! Do everything on root, broadcast AA_R at the end (smaller than S_o)
+    !
+    AA_R = cmplx_0
     !
     if (on_root) then
       allocate (S_o(num_bands, num_bands))
@@ -655,7 +657,7 @@ contains
       allocate (AA_q_loc(num_wann, num_wann, counts(mpirank(comm))))
       allocate (AA_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
       if (on_root) then
-        allocate (AA_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, kmesh_info%nntot, 3))
+        allocate (AA_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3))
         allocate (phase2(wigner_seitz%nrpts_pw90))
       endif
 
@@ -668,14 +670,14 @@ contains
 
           if (on_root) then
             ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
-            call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, AA_R_temp, AA_R_b(:, :, :, nn, idir))
+            call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, AA_R_temp, AA_R_b(:, :, :, idir))
 
             phase2 = -0.5_dp*(wigner_seitz%crvec_pw90(1, :)*kmesh_info%bk(1, nn, 1) + &
                               wigner_seitz%crvec_pw90(2, :)*kmesh_info%bk(2, nn, 1) + &
                               wigner_seitz%crvec_pw90(3, :)*kmesh_info%bk(3, nn, 1))
 
             phase2 = exp(cmplx_i*phase2)
-            AA_R_b(:, :, :, nn, idir) = AA_R_b(:, :, :, nn, idir)*spread(spread(phase2, 1, num_wann), 1, num_wann)
+            AA_R(:, :, :, idir) = AA_R(:, :, :, idir) + AA_R_b(:, :, :, idir)*spread(spread(phase2, 1, num_wann), 1, num_wann)
           endif
         enddo
       enddo
@@ -686,8 +688,7 @@ contains
       if (on_root) then
         deallocate (phase2)
         deallocate (AA_q_b)
-
-        AA_R = sum(AA_R_b, 4)
+        deallocate (AA_R_b)
 
         do ir = 1, wigner_seitz%nrpts_pw90
           if ((wigner_seitz%irvec_pw90(1, ir) .eq. 0) .and. &
@@ -802,7 +803,7 @@ contains
     complex(kind=dp), allocatable, intent(inout) :: HH_R(:, :, :)
     complex(kind=dp), allocatable, intent(inout) :: BB_R(:, :, :, :) ! <0|H(r-R)|R>
     complex(kind=dp), allocatable :: BB_R_temp(:, :, :)
-    complex(kind=dp), allocatable :: BB_R_b(:, :, :, :, :)
+    complex(kind=dp), allocatable :: BB_R_b(:, :, :, :)
 
     logical, intent(in) :: have_disentangled
     character(len=50), intent(in) :: seedname
@@ -839,6 +840,8 @@ contains
         call io_stopwatch_stop('get_oper: get_BB_R', timer)
       return
     end if
+
+    BB_R = cmplx_0
 
     if (on_root) then
 
@@ -974,7 +977,7 @@ contains
       allocate (BB_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
 
       if (on_root) then
-        allocate (BB_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, kmesh_info%nntot, 3))
+        allocate (BB_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3))
         allocate (phase2(wigner_seitz%nrpts_pw90))
       endif
 
@@ -987,14 +990,14 @@ contains
 
           if (on_root) then
             ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
-            call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, BB_R_temp, BB_R_b(:, :, :, nn, idir))
+            call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, BB_R_temp, BB_R_b(:, :, :, idir))
 
             phase2 = -0.5_dp*(wigner_seitz%crvec_pw90(1, :)*kmesh_info%bk(1, nn, 1) + &
                               wigner_seitz%crvec_pw90(2, :)*kmesh_info%bk(2, nn, 1) + &
                               wigner_seitz%crvec_pw90(3, :)*kmesh_info%bk(3, nn, 1))
 
             phase2 = exp(cmplx_i*phase2)
-            BB_R_b(:, :, :, nn, idir) = BB_R_b(:, :, :, nn, idir)*spread(spread(phase2, 1, num_wann), 1, num_wann)
+            BB_R(:, :, :, idir) = BB_R(:, :, :, idir) + BB_R_b(:, :, :, idir)*spread(spread(phase2, 1, num_wann), 1, num_wann)
           endif
         enddo
       enddo
@@ -1005,8 +1008,6 @@ contains
       if (on_root) then
         deallocate (phase2)
         deallocate (BB_q_b)
-        BB_R = sum(BB_R_b, 4)
-
         deallocate (BB_R_b)
 
         do idir = 1, 3
@@ -1105,7 +1106,7 @@ contains
     complex(kind=dp), allocatable, intent(inout) :: BB_R(:, :, :, :)
     complex(kind=dp), allocatable, intent(inout) :: CC_R(:, :, :, :, :) ! <0|r_alpha.H(r-R)_beta|R>
     complex(kind=dp), allocatable :: CC_R_temp(:, :, :)
-    complex(kind=dp), allocatable :: CC_R_b(:, :, :, :, :, :, :)
+    complex(kind=dp), allocatable :: CC_R_b(:, :, :, :, :)
 
     logical, intent(in) :: have_disentangled
     character(len=50), intent(in) :: seedname
@@ -1140,6 +1141,8 @@ contains
         call io_stopwatch_stop('get_oper: get_CC_R', timer)
       return
     end if
+
+    CC_R = cmplx_0
 
     if (on_root) then
 
@@ -1290,7 +1293,7 @@ contains
       allocate (CC_q_loc(num_wann, num_wann, counts(mpirank(comm))))
       allocate (CC_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
       if (on_root) then
-        allocate (CC_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, kmesh_info%nntot, kmesh_info%nntot, 3, 3))
+        allocate (CC_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3, 3))
         allocate (phase2(wigner_seitz%nrpts_pw90))
       endif
 
@@ -1307,7 +1310,7 @@ contains
               if (on_root) then
                 ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
                 call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, &
-                                           CC_R_temp, CC_R_b(:, :, :, nn1, nn2, a, b))
+                                           CC_R_temp, CC_R_b(:, :, :, a, b))
 
                 phase2 = -0.5_dp*(wigner_seitz%crvec_pw90(1, :)*kmesh_info%bk(1, nn1, 1) + &
                                   wigner_seitz%crvec_pw90(2, :)*kmesh_info%bk(2, nn1, 1) + &
@@ -1317,8 +1320,8 @@ contains
                                    wigner_seitz%crvec_pw90(3, :)*kmesh_info%bk(3, nn2, 1))
 
                 phase2 = exp(cmplx_i*phase2)
-                CC_R_b(:, :, :, nn1, nn2, a, b) = CC_R_b(:, :, :, nn1, nn2, a, b)* &
-                                                  spread(spread(phase2, 1, num_wann), 1, num_wann)
+                CC_R(:, :, :, a, b) = CC_R(:, :, :, a, b) + CC_R_b(:, :, :, a, b)* &
+                                      spread(spread(phase2, 1, num_wann), 1, num_wann)
               endif
             enddo
           enddo
@@ -1331,9 +1334,6 @@ contains
       if (on_root) then
         deallocate (phase2)
         deallocate (CC_q_b)
-
-        CC_R = sum(sum(CC_R_b, 5), 4)
-
         deallocate (CC_R_b)
 
         do b = 1, 3
@@ -2520,7 +2520,7 @@ contains
     complex(kind=dp), allocatable, intent(in) :: SH_R(:, :, :, :)
     complex(kind=dp), allocatable, intent(inout) :: SBB_R(:, :, :, :, :) ! <0n|sigma_x,y,z.H.(r-R)_alpha|Rm>
     complex(kind=dp), allocatable :: SBB_R_temp(:, :, :)
-    complex(kind=dp), allocatable :: SBB_R_b(:, :, :, :, :, :)
+    complex(kind=dp), allocatable :: SBB_R_b(:, :, :, :, :)
 
     logical, intent(in) :: have_disentangled
     character(len=50), intent(in) :: seedname
@@ -2553,6 +2553,8 @@ contains
         call io_stopwatch_stop('get_oper: get_SBB_R', timer)
       return
     end if
+
+    SBB_R = cmplx_0
 
     if (on_root) then
 
@@ -2676,7 +2678,7 @@ contains
       allocate (SBB_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
 
       if (on_root) then
-        allocate (SBB_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, kmesh_info%nntot, 3, 3))
+        allocate (SBB_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3, 3))
         allocate (phase2(wigner_seitz%nrpts_pw90))
       endif
 
@@ -2690,14 +2692,14 @@ contains
 
             if (on_root) then
               ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
-              call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, SBB_R_temp, SBB_R_b(:, :, :, nn2, ipol, b))
+              call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, SBB_R_temp, SBB_R_b(:, :, :, ipol, b))
 
               phase2 = -0.5_dp*(wigner_seitz%crvec_pw90(1, :)*kmesh_info%bk(1, nn2, 1) + &
                                 wigner_seitz%crvec_pw90(2, :)*kmesh_info%bk(2, nn2, 1) + &
                                 wigner_seitz%crvec_pw90(3, :)*kmesh_info%bk(3, nn2, 1))
 
               phase2 = exp(cmplx_i*phase2)
-              SBB_R_b(:, :, :, nn2, ipol, b) = SBB_R_b(:, :, :, nn2, ipol, b)*spread(spread(phase2, 1, num_wann), 1, num_wann)
+      SBB_R(:, :, :, ipol, b) = SBB_R(:, :, :, ipol, b) + SBB_R_b(:, :, :, ipol, b)*spread(spread(phase2, 1, num_wann), 1, num_wann)
             endif
           enddo
         enddo
@@ -2709,9 +2711,6 @@ contains
       if (on_root) then
         deallocate (phase2)
         deallocate (SBB_q_b)
-
-        SBB_R = sum(SBB_R_b, 4)
-
         deallocate (SBB_R_b)
 
         do b = 1, 3
@@ -2813,7 +2812,7 @@ contains
     complex(kind=dp), allocatable, intent(in) :: SS_R(:, :, :, :)
     complex(kind=dp), allocatable, intent(inout) :: SAA_R(:, :, :, :, :) !<0n|sigma_x,y,z.(r-R)_alpha|Rm>
     complex(kind=dp), allocatable :: SAA_R_temp(:, :, :)
-    complex(kind=dp), allocatable :: SAA_R_b(:, :, :, :, :, :)
+    complex(kind=dp), allocatable :: SAA_R_b(:, :, :, :, :)
 
     logical, intent(in) :: have_disentangled
     character(len=50), intent(in) :: seedname
@@ -2846,6 +2845,8 @@ contains
         call io_stopwatch_stop('get_oper: get_SAA_R', timer)
       return
     end if
+
+    SAA_R = cmplx_0
 
     if (on_root) then
 
@@ -2969,7 +2970,7 @@ contains
       allocate (SAA_R_temp(num_wann, num_wann, wigner_seitz%nrpts))
 
       if (on_root) then
-        allocate (SAA_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, kmesh_info%nntot, 3, 3))
+        allocate (SAA_R_b(num_wann, num_wann, wigner_seitz%nrpts_pw90, 3, 3))
         allocate (phase2(wigner_seitz%nrpts_pw90))
       endif
 
@@ -2983,14 +2984,14 @@ contains
 
             if (on_root) then
               ! Apply degeneracy factor and reorder according to the wigner-seitz vectors
-              call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, SAA_R_temp, SAA_R_b(:, :, :, nn2, ipol, b))
+              call operator_wigner_setup(ws_distance, ws_region, wigner_seitz, num_wann, SAA_R_temp, SAA_R_b(:, :, :, ipol, b))
 
               phase2 = -0.5_dp*(wigner_seitz%crvec_pw90(1, :)*kmesh_info%bk(1, nn2, 1) + &
                                 wigner_seitz%crvec_pw90(2, :)*kmesh_info%bk(2, nn2, 1) + &
                                 wigner_seitz%crvec_pw90(3, :)*kmesh_info%bk(3, nn2, 1))
 
               phase2 = exp(cmplx_i*phase2)
-              SAA_R_b(:, :, :, nn2, ipol, b) = SAA_R_b(:, :, :, nn2, ipol, b)*spread(spread(phase2, 1, num_wann), 1, num_wann)
+      SAA_R(:, :, :, ipol, b) = SAA_R(:, :, :, ipol, b) + SAA_R_b(:, :, :, ipol, b)*spread(spread(phase2, 1, num_wann), 1, num_wann)
             endif
           enddo
         enddo
@@ -3002,9 +3003,6 @@ contains
       if (on_root) then
         deallocate (phase2)
         deallocate (SAA_q_b)
-
-        SAA_R = sum(SAA_R_b, 4)
-
         deallocate (SAA_R_b)
 
         do b = 1, 3
