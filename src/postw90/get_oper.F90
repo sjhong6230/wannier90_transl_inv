@@ -478,7 +478,7 @@ contains
       allocate (AA_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3))
       AA_R = cmplx_0
     else
-      allocate (AA_q_b(1, 1, 1, 1, 1))
+      allocate (AA_q_b(1, 1, 1, kmesh_info%nntot, 3))
     endif
     !
     if (on_root) then
@@ -849,7 +849,7 @@ contains
       allocate (BB_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3))
       BB_R = cmplx_0
     else
-      allocate (BB_q_b(1, 1, 1, 1, 1))
+      allocate (BB_q_b(1, 1, 1, kmesh_info%nntot, 3))
     endif
 
     if (on_root) then
@@ -1154,7 +1154,7 @@ contains
       allocate (CC_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, kmesh_info%nntot, 3, 3))
       CC_R = cmplx_0
     else
-      allocate (CC_q_b(1, 1, 1, 1, 1, 1, 1))
+      allocate (CC_q_b(1, 1, 1, kmesh_info%nntot, kmesh_info%nntot, 3, 3))
     endif
 
     if (on_root) then
@@ -2570,7 +2570,7 @@ contains
       allocate (SBB_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3, 3))
       SBB_R = cmplx_0
     else
-      allocate (SBB_q_b(1, 1, 1, 1, 1, 1))
+      allocate (SBB_q_b(1, 1, 1, kmesh_info%nntot, 3, 3))
     endif
 
     if (on_root) then
@@ -2868,7 +2868,7 @@ contains
       allocate (SAA_q_b(num_wann, num_wann, num_kpts, kmesh_info%nntot, 3, 3))
       SAA_R = cmplx_0
     else
-      allocate (SAA_q_b(1, 1, 1, 1, 1, 1))
+      allocate (SAA_q_b(1, 1, 1, kmesh_info%nntot, 3, 3))
     endif
 
     if (on_root) then
