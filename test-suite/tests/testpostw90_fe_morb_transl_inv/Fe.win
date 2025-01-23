@@ -26,6 +26,7 @@ berry_task = morb
 berry_kmesh = 10 10 10 
 
 transl_inv_full = .true. 
+order_b_vectors = .true.
 
 !kpath = true
 !kpath_task = bands+morb
