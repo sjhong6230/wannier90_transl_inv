@@ -134,10 +134,10 @@ contains
     ! local variables
     type(ws_distance_type) :: ws_distance
     real(kind=dp) :: recip_lattice(3, 3), volume
-    integer :: nkp, bands_num_spec_points, my_node_id, i, ierr, nrpts_exp, nrpts_out, rpt_origin_exp
-    integer, allocatable :: irvec_exp(:, :), ir_map(:, :, :, :), ndegen_out(:)
-    real(kind=dp), allocatable :: crvec_exp(:, :)
-    complex(kind=dp), allocatable :: ham_r_exp(:, :, :), pos_r(:, :, :, :)
+    integer :: nkp, bands_num_spec_points, my_node_id, i, ir, ierr, nrpts_full, nrpts_out, ir_origin
+    integer, allocatable :: irvec_full(:, :), irvec_out(:, :), ir_map(:, :, :, :), ndegen_out(:)
+    real(kind=dp), allocatable :: crvec_full(:, :)
+    complex(kind=dp), allocatable :: ham_r_out(:, :, :), pos_r(:, :, :, :)
     logical :: have_gamma
     logical :: on_root = .false.
 
@@ -190,30 +190,58 @@ contains
       if (allocated(error)) return
     end if
 
-    ! Wigner-Seitz mapping and, under write_ndegen_applied, the expanded
-    ! lattice-vector list shared by all the real-space output files. Done on every
-    ! rank because hamiltonian_get_rmn is collective.
-    nrpts_exp = 0
+    ! Wigner-Seitz mapping, the expanded lattice-vector list, and the grid the
+    ! real-space output files are written on: the expanded one under
+    ! write_ndegen_applied, the folded one otherwise. Done on every rank because
+    ! hamiltonian_get_rmn is collective.
     if (output_file%write_hr .or. output_file%write_rmn .or. output_file%write_tb) then
       call ws_translate_dist(ws_distance, ws_region, num_wann, &
                              wannier_data%centres, real_lattice, mp_grid, nrpts, irvec, &
                              error, comm, force_recompute=.false.)
       if (allocated(error)) return
 
-      if (output_file%write_ndegen_applied) then
-        call ws_expand_rvec(ws_distance, ws_region%use_ws_distance, num_wann, nrpts, irvec, &
-                            ndegen, real_lattice, irvec_exp, crvec_exp, nrpts_exp, ir_map, &
-                            error, comm, rpt_origin_exp)
-        if (allocated(error)) return
+      call ws_expand_rvec(ws_distance, ws_region%use_ws_distance, num_wann, nrpts, irvec, &
+                          ndegen, irvec_full, nrpts_full, ir_map, ir_origin, error, comm)
+      if (allocated(error)) return
 
-        if (output_file%write_hr .or. output_file%write_tb) then
-          allocate (ham_r_exp(num_wann, num_wann, nrpts_exp), ndegen_out(nrpts_exp), stat=ierr)
-          if (ierr /= 0) then
-            call set_error_alloc(error, 'Error in allocating ham_r_exp in plot_main', comm)
-            return
-          end if
-          ndegen_out = 1
+      allocate (crvec_full(3, nrpts_full), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error in allocating crvec_full in plot_main', comm)
+        return
+      end if
+      do ir = 1, nrpts_full
+        crvec_full(:, ir) = matmul(transpose(real_lattice), real(irvec_full(:, ir), dp))
+      end do
+
+      if (output_file%write_ndegen_applied) then
+        nrpts_out = nrpts_full
+      else
+        nrpts_out = nrpts
+      end if
+
+      allocate (irvec_out(3, nrpts_out), ndegen_out(nrpts_out), stat=ierr)
+      if (ierr /= 0) then
+        call set_error_alloc(error, 'Error in allocating irvec_out in plot_main', comm)
+        return
+      end if
+      if (output_file%write_hr .or. output_file%write_tb) then
+        allocate (ham_r_out(num_wann, num_wann, nrpts_out), stat=ierr)
+        if (ierr /= 0) then
+          call set_error_alloc(error, 'Error in allocating ham_r_out in plot_main', comm)
+          return
         end if
+      end if
+
+      if (output_file%write_ndegen_applied) then
+        irvec_out = irvec_full
+        ndegen_out = 1
+        if (allocated(ham_r_out)) &
+          call ws_apply_ndegen(ws_distance, ws_region%use_ws_distance, num_wann, nrpts, ndegen, &
+                               nrpts_full, ir_map, ham_r, ham_r_out)
+      else
+        irvec_out = irvec
+        ndegen_out = ndegen
+        if (allocated(ham_r_out)) ham_r_out = ham_r
       end if
     end if
 
@@ -250,10 +278,6 @@ contains
         if (allocated(error)) return
       end if
 
-      if (allocated(ham_r_exp)) &
-        call ws_apply_ndegen(ws_distance, ws_region%use_ws_distance, num_wann, nrpts, ndegen, &
-                             nrpts_exp, ir_map, ham_r, ham_r_exp)
-
       ! calculate and write projection of WFs on original bands in outer window
       ! only meaningful in disentanglement case (and otherwise lwindow is not available)
       if (output_file%write_proj .and. num_bands > num_wann) then
@@ -270,13 +294,8 @@ contains
 
       if (output_file%write_hr) then
         ! this is a trivial matrix write; no need to parallelize
-        if (output_file%write_ndegen_applied) then
-          call hamiltonian_write_hr(ham_r_exp, irvec_exp, ndegen_out, nrpts_exp, num_wann, &
-                                    print_output%timing_level, seedname, timer, error, comm)
-        else
-          call hamiltonian_write_hr(ham_r, irvec, ndegen, nrpts, num_wann, &
-                                    print_output%timing_level, seedname, timer, error, comm)
-        end if
+        call hamiltonian_write_hr(ham_r_out, irvec_out, ndegen_out, nrpts_out, num_wann, &
+                                  print_output%timing_level, seedname, timer, error, comm)
         if (allocated(error)) return
       end if
 
@@ -315,49 +334,29 @@ contains
 
     ! <0m|r|Rn> is shared by seedname_r.dat and seedname_tb.dat
     if (output_file%write_rmn .or. output_file%write_tb) then
-      nrpts_out = nrpts
-      if (output_file%write_ndegen_applied) nrpts_out = nrpts_exp
-
       allocate (pos_r(num_wann, num_wann, nrpts_out, 3), stat=ierr)
       if (ierr /= 0) then
         call set_error_alloc(error, 'Error in allocating pos_r in plot_main', comm)
         return
       end if
 
-      if (output_file%write_ndegen_applied) then
-        call hamiltonian_get_rmn(kmesh_info, ws_distance, m_matrix, kpt_latt, real_lattice, &
-                                 wannier_data%centres, irvec, ndegen, nrpts, nrpts_exp, &
-                                 rpt_origin_exp, ws_region%use_ws_distance, &
-                                 output_file%transl_inv_full, .true., num_kpts, num_wann, &
-                                 dist_k, pos_r, error, comm, crvec_exp, ir_map)
-      else
-        call hamiltonian_get_rmn(kmesh_info, ws_distance, m_matrix, kpt_latt, real_lattice, &
-                                 wannier_data%centres, irvec, ndegen, nrpts, nrpts_exp, &
-                                 rpt_origin, ws_region%use_ws_distance, &
-                                 output_file%transl_inv_full, .false., num_kpts, num_wann, &
-                                 dist_k, pos_r, error, comm)
-      end if
+      call hamiltonian_get_rmn(kmesh_info, ws_distance, m_matrix, kpt_latt, real_lattice, &
+                               wannier_data%centres, irvec, crvec_full, ndegen, nrpts, nrpts_full, &
+                               rpt_origin, ir_origin, ir_map, ws_region%use_ws_distance, &
+                               output_file%transl_inv_full, output_file%write_ndegen_applied, &
+                               num_kpts, num_wann, dist_k, pos_r, error, comm)
       if (allocated(error)) return
 
       if (on_root) then
         if (output_file%write_rmn) then
-          if (output_file%write_ndegen_applied) then
-            call plot_write_rmn(pos_r, irvec_exp, nrpts_exp, num_wann, seedname, error, comm)
-          else
-            call plot_write_rmn(pos_r, irvec, nrpts, num_wann, seedname, error, comm)
-          end if
+          call plot_write_rmn(pos_r, irvec_out, nrpts_out, num_wann, seedname, error, comm)
           if (allocated(error)) return
         end if
 
         if (output_file%write_tb) then
-          if (output_file%write_ndegen_applied) then
-            call hamiltonian_write_tb(ham_r_exp, pos_r, real_lattice, irvec_exp, ndegen_out, &
-                                      nrpts_exp, num_wann, print_output%timing_level, seedname, &
-                                      timer, error, comm)
-          else
-            call hamiltonian_write_tb(ham_r, pos_r, real_lattice, irvec, ndegen, nrpts, num_wann, &
-                                      print_output%timing_level, seedname, timer, error, comm)
-          end if
+          call hamiltonian_write_tb(ham_r_out, pos_r, real_lattice, irvec_out, ndegen_out, &
+                                    nrpts_out, num_wann, print_output%timing_level, seedname, &
+                                    timer, error, comm)
           if (allocated(error)) return
         end if
       end if

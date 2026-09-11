@@ -1823,10 +1823,23 @@ contains
     integer, intent(in) :: num_wann
     integer, intent(in) :: nrpts
 
+    integer :: ir, ierr, ir_origin
+
     call ws_expand_rvec(ws_distance, ws_region%use_ws_distance, num_wann, nrpts, &
-                        wigner_seitz%irvec, wigner_seitz%ndegen, real_lattice, &
-                        wigner_seitz%irvec_pw90, wigner_seitz%crvec_pw90, &
-                        wigner_seitz%nrpts_pw90, wigner_seitz%ir_ind_ws_to_pw90, error, comm)
+                        wigner_seitz%irvec, wigner_seitz%ndegen, wigner_seitz%irvec_pw90, &
+                        wigner_seitz%nrpts_pw90, wigner_seitz%ir_ind_ws_to_pw90, ir_origin, &
+                        error, comm)
+    if (allocated(error)) return
+
+    allocate (wigner_seitz%crvec_pw90(3, wigner_seitz%nrpts_pw90), stat=ierr)
+    if (ierr /= 0) then
+      call set_error_alloc(error, 'Error in allocating crvec_pw90 in wigner_seitz_opt_setup', comm)
+      return
+    end if
+    do ir = 1, wigner_seitz%nrpts_pw90
+      wigner_seitz%crvec_pw90(:, ir) = matmul(transpose(real_lattice), &
+                                              real(wigner_seitz%irvec_pw90(:, ir), dp))
+    end do
 
   end subroutine wigner_seitz_opt_setup
 

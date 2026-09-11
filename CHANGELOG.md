@@ -4,40 +4,17 @@
 
 ### New `write_ndegen_applied` keyword: self-contained real-space output files
 
-`write_ndegen_applied` (default `.false.`) makes `wannier90.x` write
-`seedname_hr.dat`, `seedname_r.dat` and `seedname_tb.dat` on the fully expanded list of
-lattice vectors, i.e. every `R+T` that occurs in the Wigner-Seitz mapping of
-`use_ws_distance`, with all degeneracy weights already divided out. A consumer can then
-interpolate with a plain `sum_R exp(i k.R) O(R)`, with no `ndegen`, no `ndeg` and no
-`seedname_wsvec.dat`.
-
-- The file formats are unchanged. The degeneracy block of `seedname_hr.dat` and
-  `seedname_tb.dat` is still written, as all `1`s, so a reader that divides by it needs no
-  change. `seedname_r.dat`, which has no degeneracy block, becomes self-contained for the
-  first time.
-- `seedname_wsvec.dat` keeps its true contents, but under this flag its header carries
-  `write_ndegen_applied=.true.` and it becomes **informational only**: its shifts are
-  already folded into the other files and must not be applied to them. MDRS-aware readers
-  must gate on that token.
-- `transl_inv_full = .true.` together with `use_ws_distance = .true.` now requires
-  `write_ndegen_applied = .true.` when `seedname_r.dat` or `seedname_tb.dat` is requested,
-  and is refused otherwise. On the folded R grid those files cannot represent `<0m|r|Rn>`,
-  whose b-vector phase depends on the Wigner-Seitz shift of the pair. With the flag set,
-  `seedname_r.dat` reproduces `postw90.x`'s `AA_R` element for element, up to the Wannier
-  centres used in the phase: `get_AA_R` recomputes them from the `.mmn`, `wannier90.x` takes
-  them from the checkpoint, and the two are deliberately different under `guiding_centres`.
-- `seedname_wsvec.dat` is now also written for a `write_rmn = .true.` run, which the
-  documentation had always claimed.
-- `transl_inv_full` now also reaches `seedname_tb.dat`. Its position block was previously
-  computed by a second, independent copy of the Fourier sum that ignored the flag, so it
-  silently disagreed with `seedname_r.dat`; the two now come from the same code.
-
-Internally, the Wigner-Seitz expansion used by `postw90.x` (`wigner_seitz_opt_setup`,
-`operator_wigner_setup`) moved into the shared `w90_ws_distance` module as
-`ws_expand_rvec` / `ws_apply_ndegen`, and the two copies of the `<0m|r|Rn>` Fourier sum
-in `plot.F90` and `hamiltonian.F90` were replaced by one `hamiltonian_get_rmn`. The
-expanded R list is now sorted lexicographically, which reorders some internal `postw90.x`
-arrays; results are unchanged up to summation order.
+- `write_ndegen_applied` (default `.false.`) writes `seedname_hr.dat`, `seedname_r.dat` and
+  `seedname_tb.dat` on the fully expanded list of `R+T` vectors of the `use_ws_distance`
+  mapping, with the degeneracy weights already divided out, so they interpolate with a plain
+  `sum_R exp(i k.R) O(R)`. The file formats are unchanged; `seedname_wsvec.dat` becomes
+  informational only and says so in its header.
+- `transl_inv_full = .true.` with `use_ws_distance = .true.` now requires it when
+  `seedname_r.dat` or `seedname_tb.dat` is written, and is refused otherwise: the folded R
+  grid cannot hold `<0m|r|Rn>`, whose b-vector phase depends on the Wigner-Seitz shift.
+- `transl_inv_full` now also reaches `seedname_tb.dat`, which previously used a second copy
+  of the Fourier sum that ignored the flag, and `seedname_wsvec.dat` is now written for
+  `write_rmn = .true.` runs as the documentation had always claimed.
 
 ### `wannier90.x`, `postw90.x` and the utilities now exit nonzero on a fatal error
 

@@ -390,8 +390,7 @@ contains
 
   !================================================!
   subroutine ws_expand_rvec(ws_distance, use_ws_distance, num_wann, nrpts, irvec, ndegen, &
-                            real_lattice, irvec_exp, crvec_exp, nrpts_exp, ir_map, error, comm, &
-                            rpt_origin_exp)
+                            irvec_full, nrpts_full, ir_map, ir_origin, error, comm)
     !================================================!
     !! Build the fully expanded list of lattice vectors, i.e. the set of all
     !! R + T that occur in the Wigner-Seitz mapping computed by ws_translate_dist,
@@ -402,8 +401,8 @@ contains
     !! The expanded list is ordered lexicographically, so that it does not depend
     !! on the order in which the vectors are discovered.
     !!
-    !! If use_ws_distance is false there is nothing to expand: irvec_exp is irvec
-    !! and ir_map(1, :, :, ir) is ir.
+    !! If use_ws_distance is false there is nothing to expand: irvec_full is
+    !! irvec and ir_map is unused.
     !================================================!
 
     use w90_types, only: ws_distance_type
@@ -419,13 +418,11 @@ contains
     integer, intent(in) :: nrpts
     integer, intent(in) :: irvec(3, nrpts)
     integer, intent(in) :: ndegen(nrpts)
-    real(kind=dp), intent(in) :: real_lattice(3, 3)
 
-    integer, allocatable, intent(out) :: irvec_exp(:, :)
-    real(kind=dp), allocatable, intent(out) :: crvec_exp(:, :)
-    integer, intent(out) :: nrpts_exp
+    integer, allocatable, intent(out) :: irvec_full(:, :)
+    integer, intent(out) :: nrpts_full
     integer, allocatable, intent(out) :: ir_map(:, :, :, :)
-    integer, optional, intent(out) :: rpt_origin_exp
+    integer, intent(out) :: ir_origin
     !! index of R = 0 in the expanded list
 
     ! local variables
@@ -447,17 +444,12 @@ contains
     end if
 
     if (.not. use_ws_distance) then
-      nrpts_exp = nrpts
-      if (present(rpt_origin_exp)) rpt_origin_exp = rpt_origin
+      nrpts_full = nrpts
+      ir_origin = rpt_origin
 
-      allocate (irvec_exp(3, nrpts_exp), stat=ierr)
+      allocate (irvec_full(3, nrpts_full), stat=ierr)
       if (ierr /= 0) then
-        call set_error_alloc(error, 'Error in allocating irvec_exp in ws_expand_rvec', comm)
-        return
-      end if
-      allocate (crvec_exp(3, nrpts_exp), stat=ierr)
-      if (ierr /= 0) then
-        call set_error_alloc(error, 'Error in allocating crvec_exp in ws_expand_rvec', comm)
+        call set_error_alloc(error, 'Error in allocating irvec_full in ws_expand_rvec', comm)
         return
       end if
       ! ws_apply_ndegen does not consult ir_map when there is nothing to expand,
@@ -469,10 +461,7 @@ contains
       end if
       ir_map = -1
 
-      irvec_exp = irvec
-      do ir = 1, nrpts_exp
-        crvec_exp(:, ir) = matmul(transpose(real_lattice), real(irvec_exp(:, ir), dp))
-      end do
+      irvec_full = irvec
       return
     end if
 
@@ -510,37 +499,24 @@ contains
     end if
     index_box = 0
 
+    nrpts_full = 0
     do ir = 1, nrpts
       do j = 1, num_wann
         do i = 1, num_wann
           do ideg = 1, ws_distance%ndeg(i, j, ir)
             ivdum = ws_distance%irdist(:, ideg, i, j, ir)
-            index_box(ivdum(1), ivdum(2), ivdum(3)) = 1
+            if (index_box(ivdum(1), ivdum(2), ivdum(3)) == 0) then
+              index_box(ivdum(1), ivdum(2), ivdum(3)) = 1
+              nrpts_full = nrpts_full + 1
+            end if
           end do
         end do
       end do
     end do
 
-    nrpts_exp = 0
-    do i1 = ivmin(1), ivmax(1)
-      do i2 = ivmin(2), ivmax(2)
-        do i3 = ivmin(3), ivmax(3)
-          if (index_box(i1, i2, i3) == 1) then
-            nrpts_exp = nrpts_exp + 1
-            index_box(i1, i2, i3) = nrpts_exp
-          end if
-        end do
-      end do
-    end do
-
-    allocate (irvec_exp(3, nrpts_exp), stat=ierr)
+    allocate (irvec_full(3, nrpts_full), stat=ierr)
     if (ierr /= 0) then
-      call set_error_alloc(error, 'Error in allocating irvec_exp in ws_expand_rvec', comm)
-      return
-    end if
-    allocate (crvec_exp(3, nrpts_exp), stat=ierr)
-    if (ierr /= 0) then
-      call set_error_alloc(error, 'Error in allocating crvec_exp in ws_expand_rvec', comm)
+      call set_error_alloc(error, 'Error in allocating irvec_full in ws_expand_rvec', comm)
       return
     end if
     allocate (ir_map(max_ndeg, num_wann, num_wann, nrpts), stat=ierr)
@@ -549,18 +525,21 @@ contains
       return
     end if
 
-    if (present(rpt_origin_exp)) rpt_origin_exp = index_box(0, 0, 0)
+    ! each marked slot is visited once, so a slot still holding the mark 1 has
+    ! not been numbered yet
+    ir = 0
     do i1 = ivmin(1), ivmax(1)
       do i2 = ivmin(2), ivmax(2)
         do i3 = ivmin(3), ivmax(3)
-          ir = index_box(i1, i2, i3)
-          if (ir > 0) then
-            irvec_exp(:, ir) = (/i1, i2, i3/)
-            crvec_exp(:, ir) = matmul(transpose(real_lattice), real(irvec_exp(:, ir), dp))
+          if (index_box(i1, i2, i3) == 1) then
+            ir = ir + 1
+            index_box(i1, i2, i3) = ir
+            irvec_full(:, ir) = (/i1, i2, i3/)
           end if
         end do
       end do
     end do
+    ir_origin = index_box(0, 0, 0)
 
     ir_map = -1
     do ir = 1, nrpts
@@ -584,7 +563,7 @@ contains
 
   !================================================!
   subroutine ws_apply_ndegen(ws_distance, use_ws_distance, num_wann, nrpts, ndegen, &
-                             nrpts_exp, ir_map, op_R, op_R_exp)
+                             nrpts_full, ir_map, op_R, op_R_full)
     !================================================!
     !! Divide a real-space operator by its degeneracy weights and spread it over
     !! the expanded lattice-vector list built by ws_expand_rvec, so that it can be
@@ -603,33 +582,33 @@ contains
     integer, intent(in) :: num_wann
     integer, intent(in) :: nrpts
     integer, intent(in) :: ndegen(nrpts)
-    integer, intent(in) :: nrpts_exp
+    integer, intent(in) :: nrpts_full
     integer, intent(in) :: ir_map(:, :, :, :)
 
     complex(kind=dp), intent(in) :: op_R(num_wann, num_wann, nrpts)
     !! operator on the folded grid, before applying the degeneracy weights
-    complex(kind=dp), intent(out) :: op_R_exp(num_wann, num_wann, nrpts_exp)
+    complex(kind=dp), intent(out) :: op_R_full(num_wann, num_wann, nrpts_full)
     !! operator on the expanded grid, after applying the degeneracy weights
 
     integer :: ir, jr, i, j, ideg
 
     if (use_ws_distance) then
-      op_R_exp = cmplx_0
+      op_R_full = cmplx_0
       do ir = 1, nrpts
         do j = 1, num_wann
           do i = 1, num_wann
             do ideg = 1, ws_distance%ndeg(i, j, ir)
               jr = ir_map(ideg, i, j, ir)
-              op_R_exp(i, j, jr) = op_R_exp(i, j, jr) &
-                                   + op_R(i, j, ir)/real(ndegen(ir)*ws_distance%ndeg(i, j, ir), dp)
+              op_R_full(i, j, jr) = op_R_full(i, j, jr) &
+                                    + op_R(i, j, ir)/real(ndegen(ir)*ws_distance%ndeg(i, j, ir), dp)
             end do
           end do
         end do
       end do
     else
-      ! nrpts_exp == nrpts in this case
+      ! nrpts_full == nrpts in this case
       do ir = 1, nrpts
-        op_R_exp(:, :, ir) = op_R(:, :, ir)/real(ndegen(ir), dp)
+        op_R_full(:, :, ir) = op_R(:, :, ir)/real(ndegen(ir), dp)
       end do
     end if
     !================================================!
