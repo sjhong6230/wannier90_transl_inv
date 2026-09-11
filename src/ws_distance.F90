@@ -306,13 +306,17 @@ contains
   !================================================!
 
   !================================================!
-  subroutine ws_write_vec(ws_distance, nrpts, irvec, num_wann, use_ws_distance, seedname, error, &
-                          comm)
+  subroutine ws_write_vec(ws_distance, nrpts, irvec, num_wann, use_ws_distance, &
+                          write_ndegen_applied, seedname, error, comm)
     !================================================!
     !! Write to file the lattice vectors of the superlattice
     !! to be added to R vector in seedname_hr.dat, seedname_rmn.dat, etc.
     !! in order to have the second Wannier function inside the WS cell
     !! of the first one.
+    !!
+    !! With write_ndegen_applied those shifts are already folded into the
+    !! real-space output files, whose R list no longer matches the one written
+    !! here. The file is then informational only and the header says so.
     !================================================!
 
     use w90_io, only: io_date
@@ -324,6 +328,7 @@ contains
     type(w90_error_type), allocatable, intent(out) :: error
     integer, intent(in) :: num_wann
     logical, intent(in) :: use_ws_distance
+    logical, intent(in) :: write_ndegen_applied
     character(len=50), intent(in)  :: seedname
     type(w90_comm_type), intent(in) :: comm
 
@@ -331,9 +336,13 @@ contains
     integer, intent(in) :: irvec(3, nrpts)
     integer:: irpt, iw, jw, ideg, file_unit, ierr
     character(len=100) :: header
+    character(len=40) :: applied_token
     character(len=9)  :: cdate, ctime
 
     call io_date(cdate, ctime)
+
+    applied_token = ''
+    if (write_ndegen_applied) applied_token = '  write_ndegen_applied=.true.'
 
     open (newunit=file_unit, file=trim(seedname)//'_wsvec.dat', form='formatted', &
           status='unknown', iostat=ierr)
@@ -343,7 +352,8 @@ contains
     end if
 
     if (use_ws_distance) then
-      header = '## written on '//cdate//' at '//ctime//' with use_ws_distance=.true.'
+      header = '## written on '//cdate//' at '//ctime//' with use_ws_distance=.true.'// &
+               trim(applied_token)
       write (file_unit, '(A)') trim(header)
 
       do irpt = 1, nrpts
@@ -359,7 +369,8 @@ contains
         end do
       end do
     else
-      header = '## written on '//cdate//' at '//ctime//' with use_ws_distance=.false.'
+      header = '## written on '//cdate//' at '//ctime//' with use_ws_distance=.false.'// &
+               trim(applied_token)
       write (file_unit, '(A)') trim(header)
 
       do irpt = 1, nrpts
