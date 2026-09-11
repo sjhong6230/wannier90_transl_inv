@@ -1480,6 +1480,7 @@ contains
     call w90_readwrite_get_keyword(settings, 'write_bvec', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'write_hr_diag', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'write_hr', found, error, comm)
+    call w90_readwrite_get_keyword(settings, 'write_ndegen_applied', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'write_proj', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'write_r2mn', found, error, comm)
     call w90_readwrite_get_keyword(settings, 'write_rmn', found, error, comm)
