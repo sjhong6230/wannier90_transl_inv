@@ -861,18 +861,18 @@ contains
 
   !================================================!
   subroutine hamiltonian_get_rmn(kmesh_info, ws_distance, m_matrix, kpt_latt, real_lattice, &
-                                 wannier_centres, irvec, ndegen, nrpts, nrpts_exp, &
+                                 wannier_centres, irvec, ndegen, nrpts, nrpts_exp, rpt_origin, &
                                  use_ws_distance, transl_inv_full, write_ndegen_applied, &
-                                 num_kpts, num_wann, dist_k, pos_r, error, comm, &
-                                 irvec_exp, crvec_exp, ir_map)
+                                 num_kpts, num_wann, dist_k, pos_r, error, comm, crvec_exp, ir_map)
     !================================================!
     !! Position matrix elements <0i|r|Rj> in the Wannier basis, shared by the
     !! seedname_r.dat and seedname_tb.dat writers.
     !!
     !! With write_ndegen_applied the result is returned on the expanded lattice
-    !! vector list irvec_exp, with the degeneracy weights already divided out, so
-    !! that it interpolates with a plain sum over exp(i k.R). Otherwise it is
-    !! returned on the folded list irvec and the weights are left to the reader.
+    !! vector list of ws_expand_rvec, with the degeneracy weights already divided
+    !! out, so that it interpolates with a plain sum over exp(i k.R). Otherwise it
+    !! is returned on the folded list irvec and the weights are left to the reader.
+    !! rpt_origin indexes R = 0 in whichever of the two lists is in use.
     !!
     !! With transl_inv_full the translation-equivariant formula of get_AA_R is
     !! used: the overlaps carry the phase exp(i b.(r_i + r_j)/2) in k space and
@@ -880,12 +880,13 @@ contains
     !! lattice vector, which is why the expanded case transforms one b vector at
     !! a time instead of summing over b first.
     !!
-    !! pos_r is reduced onto the root process and is meaningful only there.
+    !! pos_r is reduced onto the root process and is meaningful only there. It is
+    !! also the reduction buffer, so it is allocated on every rank.
     !================================================!
 
     use w90_constants, only: cmplx_0, cmplx_i, twopi
     use w90_types, only: kmesh_info_type, ws_distance_type
-    use w90_ws_distance, only: ws_expand_operator
+    use w90_ws_distance, only: ws_apply_ndegen
 
     implicit none
 
@@ -899,10 +900,10 @@ contains
     integer, intent(in) :: num_wann
     integer, intent(in) :: nrpts
     integer, intent(in) :: nrpts_exp
+    integer, intent(in) :: rpt_origin
     integer, intent(in) :: irvec(:, :)
     integer, intent(in) :: ndegen(:)
     integer, intent(in) :: dist_k(:) ! MPI k-point distribution
-    integer, optional, intent(in) :: irvec_exp(:, :)
     integer, optional, intent(in) :: ir_map(:, :, :, :)
     !! the expanded grid, required if and only if write_ndegen_applied
 
@@ -920,7 +921,7 @@ contains
     !! (num_wann, num_wann, nrpts_exp if write_ndegen_applied else nrpts, 3)
 
     ! local variables
-    integer :: i, idir, ik, ik_rank, ir, ierr, nn, nno, rank, rpt_origin
+    integer :: i, idir, ik, ik_rank, ir, ierr, nn, nno, rank
     real(kind=dp) :: bvec(3)
     complex(kind=dp), allocatable :: contrib(:, :, :), mel(:, :), op_folded(:, :, :, :), &
                                      op_exp(:, :, :)
@@ -929,10 +930,8 @@ contains
     rank = mpirank(comm)
     on_root = (rank == 0)
 
-    pos_r = cmplx_0
-
     if (write_ndegen_applied) then
-      if (.not. (present(irvec_exp) .and. present(crvec_exp) .and. present(ir_map))) then
+      if (.not. (present(crvec_exp) .and. present(ir_map))) then
         call set_error_fatal(error, 'hamiltonian_get_rmn: write_ndegen_applied needs the '// &
                              'expanded lattice-vector list', comm)
         return
@@ -945,19 +944,21 @@ contains
       return
     end if
 
-    allocate (contrib(num_wann, num_wann, 3), mel(num_wann, num_wann), &
-              op_folded(num_wann, num_wann, nrpts, 3), stat=ierr)
+    allocate (contrib(num_wann, num_wann, 3), mel(num_wann, num_wann), stat=ierr)
     if (ierr /= 0) then
-      call set_error_alloc(error, 'Error in allocating op_folded in hamiltonian_get_rmn', comm)
+      call set_error_alloc(error, 'Error in allocating contrib in hamiltonian_get_rmn', comm)
       return
     end if
     if (write_ndegen_applied) then
-      allocate (op_exp(num_wann, num_wann, nrpts_exp), stat=ierr)
+      allocate (op_folded(num_wann, num_wann, nrpts, 3), &
+                op_exp(num_wann, num_wann, nrpts_exp), stat=ierr)
       if (ierr /= 0) then
-        call set_error_alloc(error, 'Error in allocating op_exp in hamiltonian_get_rmn', comm)
+        call set_error_alloc(error, 'Error in allocating op_folded in hamiltonian_get_rmn', comm)
         return
       end if
     end if
+
+    pos_r = cmplx_0
 
     if (transl_inv_full .and. write_ndegen_applied) then
 
@@ -970,7 +971,8 @@ contains
         do ik = 1, num_kpts
           if (dist_k(ik) /= rank) cycle
           ik_rank = ik_rank + 1
-          call accumulate_neighbour(ik, ik_rank, kmesh_info%nnord(nno, ik), .false.)
+          nn = kmesh_info%nnord(nno, ik)
+          call accumulate_neighbour(op_folded)
         end do
 
         call comms_reduce(op_folded(1, 1, 1, 1), num_wann*num_wann*nrpts*3, 'SUM', error, comm)
@@ -979,8 +981,8 @@ contains
         if (on_root) then
           bvec = kmesh_info%bk(:, nno, 1)
           do idir = 1, 3
-            call ws_expand_operator(ws_distance, use_ws_distance, num_wann, nrpts, ndegen, &
-                                    nrpts_exp, ir_map, op_folded(:, :, :, idir), op_exp)
+            call ws_apply_ndegen(ws_distance, use_ws_distance, num_wann, nrpts, ndegen, &
+                                 nrpts_exp, ir_map, op_folded(:, :, :, idir), op_exp)
             do ir = 1, nrpts_exp
               pos_r(:, :, ir, idir) = pos_r(:, :, ir, idir) + op_exp(:, :, ir) &
                                       *exp(-cmplx_i*0.5_dp*dot_product(bvec, crvec_exp(:, ir)))
@@ -991,29 +993,35 @@ contains
 
     else
 
-      op_folded = cmplx_0
+      ! Sum over b directly. Without the expansion pos_r is itself the folded
+      ! accumulator and the reduction buffer.
+      if (write_ndegen_applied) op_folded = cmplx_0
       ik_rank = 0
       do ik = 1, num_kpts
         if (dist_k(ik) /= rank) cycle
         ik_rank = ik_rank + 1
         do nn = 1, kmesh_info%nntot
-          call accumulate_neighbour(ik, ik_rank, nn, transl_inv_full)
+          if (write_ndegen_applied) then
+            call accumulate_neighbour(op_folded)
+          else
+            call accumulate_neighbour(pos_r)
+          end if
         end do
       end do
 
-      call comms_reduce(op_folded(1, 1, 1, 1), num_wann*num_wann*nrpts*3, 'SUM', error, comm)
-      if (allocated(error)) return
-
-      if (on_root) then
-        if (write_ndegen_applied) then
+      if (write_ndegen_applied) then
+        call comms_reduce(op_folded(1, 1, 1, 1), num_wann*num_wann*nrpts*3, 'SUM', error, comm)
+        if (allocated(error)) return
+        if (on_root) then
           do idir = 1, 3
-            call ws_expand_operator(ws_distance, use_ws_distance, num_wann, nrpts, ndegen, &
-                                    nrpts_exp, ir_map, op_folded(:, :, :, idir), op_exp)
+            call ws_apply_ndegen(ws_distance, use_ws_distance, num_wann, nrpts, ndegen, &
+                                 nrpts_exp, ir_map, op_folded(:, :, :, idir), op_exp)
             pos_r(:, :, :, idir) = op_exp(:, :, :)
           end do
-        else
-          pos_r(:, :, :, :) = op_folded(:, :, :, :)
         end if
+      else
+        call comms_reduce(pos_r(1, 1, 1, 1), num_wann*num_wann*nrpts*3, 'SUM', error, comm)
+        if (allocated(error)) return
       end if
 
     end if
@@ -1021,57 +1029,33 @@ contains
     ! <0i|r|0i> is the Wannier centre; the transl_inv_full formula above does not
     ! produce it, see get_AA_R.
     if (on_root .and. transl_inv_full) then
-      rpt_origin = 0
-      if (write_ndegen_applied) then
-        do ir = 1, nrpts_exp
-          if (all(irvec_exp(:, ir) == 0)) rpt_origin = ir
-        end do
-      else
-        do ir = 1, nrpts
-          if (all(irvec(:, ir) == 0)) rpt_origin = ir
-        end do
-      end if
-      if (rpt_origin == 0) then
-        call set_error_fatal(error, 'R=0 is not in the list of lattice vectors.', comm)
-        return
-      end if
       do i = 1, num_wann
         pos_r(i, i, rpt_origin, :) = cmplx(wannier_centres(:, i), 0.0_dp, kind=dp)
       end do
     end if
 
-    deallocate (op_folded, mel, contrib, stat=ierr)
-    if (ierr /= 0) then
-      call set_error_dealloc(error, 'Error in deallocating op_folded in hamiltonian_get_rmn', comm)
-      return
-    end if
-    if (allocated(op_exp)) then
-      deallocate (op_exp, stat=ierr)
-      if (ierr /= 0) then
-        call set_error_dealloc(error, 'Error in deallocating op_exp in hamiltonian_get_rmn', comm)
-        return
-      end if
-    end if
-
   contains
 
-    subroutine accumulate_neighbour(ik, ik_rank, nn, apply_r_phase)
-      !! Add the contribution of neighbour nn of k-point ik to op_folded.
-      !! apply_r_phase folds the transl_inv_full factor exp(-i b.R/2) in at the
-      !! unshifted R; it must be false when the caller applies it at the final,
-      !! expanded R instead.
+    subroutine accumulate_neighbour(acc)
+      !! Add the contribution of neighbour nn of k-point ik (host variables) to
+      !! the folded accumulator acc.
 
       implicit none
 
-      integer, intent(in) :: ik, ik_rank, nn
-      logical, intent(in) :: apply_r_phase
+      complex(kind=dp), intent(inout) :: acc(:, :, :, :)
 
       integer :: i, j, idir, ir
-      real(kind=dp) :: rdotk, wbk
+      real(kind=dp) :: rdotk, wbk, rvec(3)
       complex(kind=dp) :: fac
+      logical :: apply_r_phase
+
+      ! the real-space half of the transl_inv_full phase can only be folded in at
+      ! the unshifted R when the output stays on the folded grid
+      apply_r_phase = transl_inv_full .and. .not. write_ndegen_applied
 
       if (transl_inv_full) then
-        ! k-space half of the get_AA_R phase, exp(i b.(r_i + r_j)/2)
+        ! k-space half of the get_AA_R phase, exp(i b.(r_i + r_j)/2). m_matrix may
+        ! be dimensioned on num_bands, so index its leading num_wann corner.
         do j = 1, num_wann
           do i = 1, num_wann
             mel(i, j) = m_matrix(i, j, nn, ik_rank) &
@@ -1084,8 +1068,6 @@ contains
           contrib(:, :, idir) = cmplx_i*kmesh_info%wb(nn)*kmesh_info%bk(idir, nn, ik)*mel(:, :)
         end do
       else
-        ! m_matrix may be dimensioned on num_bands; the Wannier-gauge block is
-        ! its leading num_wann x num_wann corner
         mel(:, :) = m_matrix(1:num_wann, 1:num_wann, nn, ik_rank)
         do idir = 1, 3
           wbk = kmesh_info%wb(nn)*kmesh_info%bk(idir, nn, ik)
@@ -1101,13 +1083,15 @@ contains
       end if
 
       do ir = 1, nrpts
-        rdotk = twopi*dot_product(kpt_latt(:, ik), real(irvec(:, ir), dp))
+        rvec = real(irvec(:, ir), dp)
+        rdotk = twopi*dot_product(kpt_latt(:, ik), rvec)
         fac = exp(-cmplx_i*rdotk)/real(num_kpts, dp)
         if (apply_r_phase) &
+          ! real-space half of the get_AA_R phase, exp(-i b.R/2)
           fac = fac*exp(-cmplx_i*0.5_dp*dot_product(kmesh_info%bk(:, nn, ik), &
-                                                    matmul(real(irvec(:, ir), dp), real_lattice)))
+                                                    matmul(rvec, real_lattice)))
         do idir = 1, 3
-          op_folded(:, :, ir, idir) = op_folded(:, :, ir, idir) + contrib(:, :, idir)*fac
+          acc(:, :, ir, idir) = acc(:, :, ir, idir) + contrib(:, :, idir)*fac
         end do
       end do
 

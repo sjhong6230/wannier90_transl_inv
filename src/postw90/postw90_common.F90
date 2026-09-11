@@ -1823,13 +1823,10 @@ contains
     integer, intent(in) :: num_wann
     integer, intent(in) :: nrpts
 
-    integer :: rpt_origin_pw90 ! unused: postw90 locates R = 0 in irvec_pw90 where it needs it
-
     call ws_expand_rvec(ws_distance, ws_region%use_ws_distance, num_wann, nrpts, &
                         wigner_seitz%irvec, wigner_seitz%ndegen, real_lattice, &
                         wigner_seitz%irvec_pw90, wigner_seitz%crvec_pw90, &
-                        wigner_seitz%nrpts_pw90, wigner_seitz%ir_ind_ws_to_pw90, &
-                        rpt_origin_pw90, error, comm)
+                        wigner_seitz%nrpts_pw90, wigner_seitz%ir_ind_ws_to_pw90, error, comm)
 
   end subroutine wigner_seitz_opt_setup
 

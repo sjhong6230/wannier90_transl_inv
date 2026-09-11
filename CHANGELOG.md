@@ -23,7 +23,9 @@ interpolate with a plain `sum_R exp(i k.R) O(R)`, with no `ndegen`, no `ndeg` an
   `write_ndegen_applied = .true.` when `seedname_r.dat` or `seedname_tb.dat` is requested,
   and is refused otherwise. On the folded R grid those files cannot represent `<0m|r|Rn>`,
   whose b-vector phase depends on the Wigner-Seitz shift of the pair. With the flag set,
-  `seedname_r.dat` reproduces `postw90.x`'s `AA_R` element for element.
+  `seedname_r.dat` reproduces `postw90.x`'s `AA_R` element for element, up to the Wannier
+  centres used in the phase: `get_AA_R` recomputes them from the `.mmn`, `wannier90.x` takes
+  them from the checkpoint, and the two are deliberately different under `guiding_centres`.
 - `seedname_wsvec.dat` is now also written for a `write_rmn = .true.` run, which the
   documentation had always claimed.
 - `transl_inv_full` now also reaches `seedname_tb.dat`. Its position block was previously
@@ -32,7 +34,7 @@ interpolate with a plain `sum_R exp(i k.R) O(R)`, with no `ndegen`, no `ndeg` an
 
 Internally, the Wigner-Seitz expansion used by `postw90.x` (`wigner_seitz_opt_setup`,
 `operator_wigner_setup`) moved into the shared `w90_ws_distance` module as
-`ws_expand_rvec` / `ws_expand_operator`, and the two copies of the `<0m|r|Rn>` Fourier sum
+`ws_expand_rvec` / `ws_apply_ndegen`, and the two copies of the `<0m|r|Rn>` Fourier sum
 in `plot.F90` and `hamiltonian.F90` were replaced by one `hamiltonian_get_rmn`. The
 expanded R list is now sorted lexicographically, which reorders some internal `postw90.x`
 arrays; results are unchanged up to summation order.

@@ -56,8 +56,7 @@ module w90_ws_distance
   private
 
   public :: clean_ws_translate
-  public :: ws_expand_clean
-  public :: ws_expand_operator
+  public :: ws_apply_ndegen
   public :: ws_expand_rvec
   public :: ws_translate_dist
   public :: ws_write_vec
@@ -391,8 +390,8 @@ contains
 
   !================================================!
   subroutine ws_expand_rvec(ws_distance, use_ws_distance, num_wann, nrpts, irvec, ndegen, &
-                            real_lattice, irvec_exp, crvec_exp, nrpts_exp, ir_map, &
-                            rpt_origin_exp, error, comm)
+                            real_lattice, irvec_exp, crvec_exp, nrpts_exp, ir_map, error, comm, &
+                            rpt_origin_exp)
     !================================================!
     !! Build the fully expanded list of lattice vectors, i.e. the set of all
     !! R + T that occur in the Wigner-Seitz mapping computed by ws_translate_dist,
@@ -426,7 +425,8 @@ contains
     real(kind=dp), allocatable, intent(out) :: crvec_exp(:, :)
     integer, intent(out) :: nrpts_exp
     integer, allocatable, intent(out) :: ir_map(:, :, :, :)
-    integer, intent(out) :: rpt_origin_exp
+    integer, optional, intent(out) :: rpt_origin_exp
+    !! index of R = 0 in the expanded list
 
     ! local variables
     integer :: i, j, ideg, ir, i1, i2, i3, ierr, max_ndeg, rpt_origin
@@ -448,7 +448,7 @@ contains
 
     if (.not. use_ws_distance) then
       nrpts_exp = nrpts
-      rpt_origin_exp = rpt_origin
+      if (present(rpt_origin_exp)) rpt_origin_exp = rpt_origin
 
       allocate (irvec_exp(3, nrpts_exp), stat=ierr)
       if (ierr /= 0) then
@@ -460,16 +460,18 @@ contains
         call set_error_alloc(error, 'Error in allocating crvec_exp in ws_expand_rvec', comm)
         return
       end if
-      allocate (ir_map(1, num_wann, num_wann, nrpts), stat=ierr)
+      ! ws_apply_ndegen does not consult ir_map when there is nothing to expand,
+      ! so allocate it only to have something to pass
+      allocate (ir_map(1, 1, 1, 1), stat=ierr)
       if (ierr /= 0) then
         call set_error_alloc(error, 'Error in allocating ir_map in ws_expand_rvec', comm)
         return
       end if
+      ir_map = -1
 
       irvec_exp = irvec
       do ir = 1, nrpts_exp
         crvec_exp(:, ir) = matmul(transpose(real_lattice), real(irvec_exp(:, ir), dp))
-        ir_map(1, :, :, ir) = ir
       end do
       return
     end if
@@ -494,6 +496,8 @@ contains
     ! Mark every vector that occurs in irdist on an integer box spanning them all,
     ! then walk the box in lexicographic order to number the vectors found.
     ! Unused slots of irdist are zero, which is a vector of the list anyway.
+    ! R_wz_sc bounds the box by +-2*(ws_search_size + 1)*mp_grid, and in practice
+    ! it is a small multiple of mp_grid: a few MB of integers at worst.
     do i = 1, 3
       ivmin(i) = minval(ws_distance%irdist(i, :, :, :, :))
       ivmax(i) = maxval(ws_distance%irdist(i, :, :, :, :))
@@ -545,7 +549,7 @@ contains
       return
     end if
 
-    rpt_origin_exp = index_box(0, 0, 0)
+    if (present(rpt_origin_exp)) rpt_origin_exp = index_box(0, 0, 0)
     do i1 = ivmin(1), ivmax(1)
       do i2 = ivmin(2), ivmax(2)
         do i3 = ivmin(3), ivmax(3)
@@ -579,8 +583,8 @@ contains
   end subroutine ws_expand_rvec
 
   !================================================!
-  subroutine ws_expand_operator(ws_distance, use_ws_distance, num_wann, nrpts, ndegen, &
-                                nrpts_exp, ir_map, op_R, op_R_exp)
+  subroutine ws_apply_ndegen(ws_distance, use_ws_distance, num_wann, nrpts, ndegen, &
+                             nrpts_exp, ir_map, op_R, op_R_exp)
     !================================================!
     !! Divide a real-space operator by its degeneracy weights and spread it over
     !! the expanded lattice-vector list built by ws_expand_rvec, so that it can be
@@ -609,9 +613,8 @@ contains
 
     integer :: ir, jr, i, j, ideg
 
-    op_R_exp = cmplx_0
-
     if (use_ws_distance) then
+      op_R_exp = cmplx_0
       do ir = 1, nrpts
         do j = 1, num_wann
           do i = 1, num_wann
@@ -630,47 +633,7 @@ contains
       end do
     end if
     !================================================!
-  end subroutine ws_expand_operator
-
-  !================================================!
-  subroutine ws_expand_clean(irvec_exp, crvec_exp, ir_map, error, comm)
-    !================================================!
-    !! Release the arrays returned by ws_expand_rvec.
-    !================================================!
-
-    implicit none
-
-    integer, allocatable, intent(inout) :: irvec_exp(:, :)
-    real(kind=dp), allocatable, intent(inout) :: crvec_exp(:, :)
-    integer, allocatable, intent(inout) :: ir_map(:, :, :, :)
-    type(w90_error_type), allocatable, intent(out) :: error
-    type(w90_comm_type), intent(in) :: comm
-
-    integer :: ierr
-
-    if (allocated(irvec_exp)) then
-      deallocate (irvec_exp, stat=ierr)
-      if (ierr /= 0) then
-        call set_error_dealloc(error, 'Error in deallocating irvec_exp in ws_expand_clean', comm)
-        return
-      end if
-    end if
-    if (allocated(crvec_exp)) then
-      deallocate (crvec_exp, stat=ierr)
-      if (ierr /= 0) then
-        call set_error_dealloc(error, 'Error in deallocating crvec_exp in ws_expand_clean', comm)
-        return
-      end if
-    end if
-    if (allocated(ir_map)) then
-      deallocate (ir_map, stat=ierr)
-      if (ierr /= 0) then
-        call set_error_dealloc(error, 'Error in deallocating ir_map in ws_expand_clean', comm)
-        return
-      end if
-    end if
-    !================================================!
-  end subroutine ws_expand_clean
+  end subroutine ws_apply_ndegen
 
   !================================================!
   subroutine clean_ws_translate(ws_distance, error, comm)

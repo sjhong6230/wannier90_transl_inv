@@ -70,8 +70,7 @@ contains
     use w90_wannier90_types, only: w90_calculation_type, wvfn_read_type, output_file_type, &
                                    fermi_surface_plot_type, band_plot_type, wannier_plot_type, real_space_ham_type, &
                                    ham_logical_type
-    use w90_ws_distance, only: ws_expand_clean, ws_expand_operator, ws_expand_rvec, &
-                               ws_translate_dist, ws_write_vec
+    use w90_ws_distance, only: ws_apply_ndegen, ws_expand_rvec, ws_translate_dist, ws_write_vec
     use w90_error, only: w90_error_type, set_error_alloc, set_error_dealloc
 
     implicit none
@@ -204,8 +203,17 @@ contains
       if (output_file%write_ndegen_applied) then
         call ws_expand_rvec(ws_distance, ws_region%use_ws_distance, num_wann, nrpts, irvec, &
                             ndegen, real_lattice, irvec_exp, crvec_exp, nrpts_exp, ir_map, &
-                            rpt_origin_exp, error, comm)
+                            error, comm, rpt_origin_exp)
         if (allocated(error)) return
+
+        if (output_file%write_hr .or. output_file%write_tb) then
+          allocate (ham_r_exp(num_wann, num_wann, nrpts_exp), ndegen_out(nrpts_exp), stat=ierr)
+          if (ierr /= 0) then
+            call set_error_alloc(error, 'Error in allocating ham_r_exp in plot_main', comm)
+            return
+          end if
+          ndegen_out = 1
+        end if
       end if
     end if
 
@@ -242,23 +250,9 @@ contains
         if (allocated(error)) return
       end if
 
-      if (output_file%write_ndegen_applied .and. &
-          (output_file%write_hr .or. output_file%write_tb)) then
-        allocate (ham_r_exp(num_wann, num_wann, nrpts_exp), stat=ierr)
-        if (ierr /= 0) then
-          call set_error_alloc(error, 'Error in allocating ham_r_exp in plot_main', comm)
-          return
-        end if
-        allocate (ndegen_out(nrpts_exp), stat=ierr)
-        if (ierr /= 0) then
-          call set_error_alloc(error, 'Error in allocating ndegen_out in plot_main', comm)
-          return
-        end if
-        ndegen_out = 1
-
-        call ws_expand_operator(ws_distance, ws_region%use_ws_distance, num_wann, nrpts, ndegen, &
-                                nrpts_exp, ir_map, ham_r, ham_r_exp)
-      end if
+      if (allocated(ham_r_exp)) &
+        call ws_apply_ndegen(ws_distance, ws_region%use_ws_distance, num_wann, nrpts, ndegen, &
+                             nrpts_exp, ir_map, ham_r, ham_r_exp)
 
       ! calculate and write projection of WFs on original bands in outer window
       ! only meaningful in disentanglement case (and otherwise lwindow is not available)
@@ -333,14 +327,15 @@ contains
       if (output_file%write_ndegen_applied) then
         call hamiltonian_get_rmn(kmesh_info, ws_distance, m_matrix, kpt_latt, real_lattice, &
                                  wannier_data%centres, irvec, ndegen, nrpts, nrpts_exp, &
-                                 ws_region%use_ws_distance, output_file%transl_inv_full, &
-                                 .true., num_kpts, num_wann, dist_k, pos_r, error, comm, &
-                                 irvec_exp, crvec_exp, ir_map)
+                                 rpt_origin_exp, ws_region%use_ws_distance, &
+                                 output_file%transl_inv_full, .true., num_kpts, num_wann, &
+                                 dist_k, pos_r, error, comm, crvec_exp, ir_map)
       else
         call hamiltonian_get_rmn(kmesh_info, ws_distance, m_matrix, kpt_latt, real_lattice, &
                                  wannier_data%centres, irvec, ndegen, nrpts, nrpts_exp, &
-                                 ws_region%use_ws_distance, output_file%transl_inv_full, &
-                                 .false., num_kpts, num_wann, dist_k, pos_r, error, comm)
+                                 rpt_origin, ws_region%use_ws_distance, &
+                                 output_file%transl_inv_full, .false., num_kpts, num_wann, &
+                                 dist_k, pos_r, error, comm)
       end if
       if (allocated(error)) return
 
@@ -373,16 +368,6 @@ contains
         return
       end if
     end if
-
-    if (allocated(ham_r_exp)) then
-      deallocate (ham_r_exp, ndegen_out, stat=ierr)
-      if (ierr /= 0) then
-        call set_error_dealloc(error, 'Error in deallocating ham_r_exp in plot_main', comm)
-        return
-      end if
-    end if
-    call ws_expand_clean(irvec_exp, crvec_exp, ir_map, error, comm)
-    if (allocated(error)) return
 
     if (w90_calculation%bands_plot) then
       bands_num_spec_points = 0

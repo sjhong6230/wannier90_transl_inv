@@ -3294,7 +3294,7 @@ contains
     use w90_constants, only: dp
     use w90_types, only: ws_region_type, ws_distance_type
     use w90_postw90_types, only: wigner_seitz_type
-    use w90_ws_distance, only: ws_expand_operator
+    use w90_ws_distance, only: ws_apply_ndegen
 
     type(ws_distance_type), intent(in) :: ws_distance
     type(ws_region_type), intent(in) :: ws_region
@@ -3306,9 +3306,9 @@ contains
     complex(kind=dp), intent(inout) :: op_R_opt_ws(num_wann, num_wann, wigner_seitz%nrpts_pw90)
     !! operator in real-space grid, after applying ndegen
 
-    call ws_expand_operator(ws_distance, ws_region%use_ws_distance, num_wann, wigner_seitz%nrpts, &
-                            wigner_seitz%ndegen, wigner_seitz%nrpts_pw90, &
-                            wigner_seitz%ir_ind_ws_to_pw90, op_R, op_R_opt_ws)
+    call ws_apply_ndegen(ws_distance, ws_region%use_ws_distance, num_wann, wigner_seitz%nrpts, &
+                         wigner_seitz%ndegen, wigner_seitz%nrpts_pw90, &
+                         wigner_seitz%ir_ind_ws_to_pw90, op_R, op_R_opt_ws)
 
   end subroutine operator_wigner_setup
 
